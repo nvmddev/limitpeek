@@ -13,9 +13,6 @@ enum OAuth {
 
     /// Read-only. A token scoped this way cannot spend inference if it leaks.
     static let scopes = ["user:profile"]
-
-    /// Only if the usage endpoint rejects a profile-only token.
-    static let fallbackScopes = ["user:profile", "user:inference"]
 }
 
 struct PKCE: Sendable {

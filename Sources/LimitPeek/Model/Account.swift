@@ -5,7 +5,6 @@ import Foundation
 struct Account: Identifiable, Codable, Sendable, Hashable {
     var id: String
     var displayName: String
-    var email: String
     var organizationName: String?
 
     var subtitle: String {
@@ -26,14 +25,12 @@ struct ProfileResponse: Decodable, Sendable {
     }
 
     struct OrganizationInfo: Decodable, Sendable {
-        var uuid: String?
         var name: String?
     }
 
     var asAccount: Account {
         Account(id: account.uuid,
                 displayName: account.displayName ?? account.fullName ?? account.email,
-                email: account.email,
                 organizationName: organization?.name)
     }
 }

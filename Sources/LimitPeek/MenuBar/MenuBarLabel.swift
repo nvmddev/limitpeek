@@ -74,7 +74,9 @@ enum MenuBarLabel {
         return "Claude usage: \(Int(percent.rounded())) percent of the 5-hour limit"
     }
 
-    private struct Content: View {
+    /// Not private: `scripts/ReadmeArt.swift` draws it at its own scale and
+    /// colour for the README.
+    struct Content: View {
         let percent: Double?
         let tint: Color?
 

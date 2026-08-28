@@ -15,7 +15,6 @@ struct UsageResponse: Decodable, Sendable {
     var sevenDaySonnet: RateWindow?
 
     var spend: Spend?
-    var extraUsage: ExtraUsage?
 }
 
 struct RateWindow: Decodable, Sendable {
@@ -26,17 +25,14 @@ struct RateWindow: Decodable, Sendable {
 
 struct LimitEntry: Decodable, Sendable {
     var kind: String
-    var group: String?
     /// Already 0–100.
     var percent: Double
     var severity: Severity?
     var resetsAt: Date?
     var scope: Scope?
-    var isActive: Bool?
 
     struct Scope: Decodable, Sendable {
         var model: Label?
-        var surface: Label?
 
         struct Label: Decodable, Sendable {
             var displayName: String
@@ -61,13 +57,6 @@ struct Spend: Decodable, Sendable {
             Decimal(amountMinor) / pow(Decimal(10), exponent)
         }
     }
-}
-
-struct ExtraUsage: Decodable, Sendable {
-    var isEnabled: Bool?
-    var utilization: Double?
-    var currency: String?
-    var disabledReason: String?
 }
 
 enum Severity: String, Decodable, Sendable {

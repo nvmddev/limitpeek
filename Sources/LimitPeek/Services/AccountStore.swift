@@ -35,6 +35,15 @@ final class AccountStore {
         loadAccounts()
     }
 
+    #if DEBUG
+    /// For previews and `scripts/ReadmeArt.swift`.
+    init(fixture account: Account, display: UsageDisplay) {
+        accounts = [account]
+        selectedAccountID = account.id
+        self.display = display
+    }
+    #endif
+
     // MARK: - Sign in
 
     func beginSignIn() -> URL {

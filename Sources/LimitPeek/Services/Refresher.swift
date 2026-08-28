@@ -13,20 +13,14 @@ final class Refresher {
 
     private weak var store: AccountStore?
     private var pollTask: Task<Void, Never>?
+    /// Held for the life of the app; the tokens exist only to keep the
+    /// observations alive.
     private var observers: [NSObjectProtocol] = []
 
     func start(store: AccountStore) {
         self.store = store
         observeSleepWake()
         resume()
-    }
-
-    func stop() {
-        pollTask?.cancel()
-        pollTask = nil
-        let center = NSWorkspace.shared.notificationCenter
-        observers.forEach(center.removeObserver)
-        observers.removeAll()
     }
 
     func refreshIfStale() {
