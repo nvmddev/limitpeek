@@ -47,12 +47,23 @@ at launch unless a provisioning profile inside the bundle authorises it — the
 failure looks like `Launch failed … Code=163`, or exit 137 when started
 directly. Three things are needed:
 
-1. An **Identifier** (App ID) for `dev.nevermind.LimitPeek` with the Keychain
-   Sharing capability, at developer.apple.com → Identifiers.
+1. An **Identifier** (App ID) for `dev.nevermind.LimitPeek`, at
+   developer.apple.com → Identifiers. No capability to tick: the access group
+   `TEAMID.dev.nevermind.LimitPeek` follows from the App ID itself, and Keychain
+   Sharing is an Xcode-side switch rather than a portal capability.
 2. A **Developer ID provisioning profile** for that App ID — Profiles → `+` →
    Distribution → Developer ID.
 3. The downloaded profile saved as `Resources/embedded.provisionprofile`
    (gitignored).
+
+Apple grants the profile `keychain-access-groups` as the team wildcard
+`TEAMID.*`, which covers the concrete group `build.sh` writes. Check before
+building — a profile that lacks it yields an app that signs cleanly and then
+gets killed at launch:
+
+```sh
+security cms -D -i Resources/embedded.provisionprofile | plutil -p -
+```
 
 `build.sh` then copies it into the bundle and injects the entitlement. Without
 the file it skips both and says so, rather than producing an app that cannot
@@ -91,6 +102,7 @@ set — see [.github/workflows/release.yml](../.github/workflows/release.yml).
 | `MACOS_CERTIFICATE_P12` | base64 of the Developer ID certificate |
 | `MACOS_CERTIFICATE_PASSWORD` | its export password |
 | `MACOS_SIGN_IDENTITY` | optional; derived from the certificate if unset |
+| `MACOS_PROVISION_PROFILE` | base64 of the provisioning profile; without it the app asks once for Keychain access |
 | `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD` | notarisation |
 | `HOMEBREW_TAP_TOKEN` | PAT with `contents:write` on the tap |
 | `RELEASE_PAT` | optional; lets the changelog PR trigger CI |

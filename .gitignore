@@ -9,5 +9,6 @@ dist/
 
 # signing material
 Resources/embedded.provisionprofile
+*.provisionprofile
 *.p12
 *.cer

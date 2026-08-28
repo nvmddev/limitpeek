@@ -132,6 +132,23 @@ jobs:
             echo "::warning::Signed but not notarized (APPLE_ID secret missing)."
           fi
 
+      - name: Install provisioning profile
+        env:
+          PROFILE: ${{ secrets.MACOS_PROVISION_PROFILE }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$PROFILE" ]]; then
+            echo "::warning::No MACOS_PROVISION_PROFILE — the app ships without keychain-access-groups and asks once for Keychain access on first launch."
+            exit 0
+          fi
+          printf '%s' "$PROFILE" | base64 --decode > Resources/embedded.provisionprofile
+          # A profile that doesn't authorise the entitlement still builds and
+          # signs cleanly; it only fails when AMFI kills the app at launch.
+          # Reading it here turns that into a legible failure.
+          security cms -D -i Resources/embedded.provisionprofile > "${RUNNER_TEMP}/profile.plist"
+          /usr/libexec/PlistBuddy -c 'Print :Entitlements:keychain-access-groups' "${RUNNER_TEMP}/profile.plist"
+          echo "Profile expires: $(/usr/libexec/PlistBuddy -c 'Print :ExpirationDate' "${RUNNER_TEMP}/profile.plist")"
+
       - name: Build
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -149,6 +166,36 @@ jobs:
           lipo -info "$APP/Contents/MacOS/LimitPeek" | grep -q x86_64
           if find "$APP" -name '*Tests*' -print -quit | grep -q .; then
             echo "::error::test artifacts found inside the app bundle"
+            exit 1
+          fi
+          # build.sh skips the profile and the entitlement together when it can't
+          # read a Team ID, and says so only in passing.
+          if [[ -f Resources/embedded.provisionprofile ]]; then
+            test -f "$APP/Contents/embedded.provisionprofile"
+            codesign -d --entitlements - "$APP" 2>/dev/null \
+              | grep -q keychain-access-groups || {
+              echo "::error::profile installed but the signed bundle carries no keychain-access-groups"
+              exit 1
+            }
+          fi
+
+      - name: Smoke-test launch
+        run: |
+          set -euo pipefail
+          # A restricted entitlement the embedded profile doesn't authorise makes
+          # AMFI SIGKILL the app at launch. Every earlier step still passes then —
+          # the bundle signs, verifies and notarizes fine — so this is the only
+          # place the breakage can surface before users hit it.
+          build/LimitPeek.app/Contents/MacOS/LimitPeek &
+          pid=$!
+          sleep 10
+          if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null || true
+            echo "Launched and still running after 10s."
+          else
+            status=0
+            wait "$pid" || status=$?
+            echo "::error::LimitPeek died at launch (exit ${status}). 137 means AMFI killed it: the embedded profile does not authorise the bundle's entitlements."
             exit 1
           fi
 
