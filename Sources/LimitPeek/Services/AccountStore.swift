@@ -16,7 +16,6 @@ final class AccountStore {
     private(set) var rateLimit: RateLimit?
 
     struct RateLimit {
-        /// What the server asked for, when it sent a Retry-After.
         var retryAfter: TimeInterval?
     }
 

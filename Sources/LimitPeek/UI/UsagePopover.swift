@@ -43,6 +43,7 @@ struct UsagePopover: View {
             AppGlyph()
                 .fill(.secondary)
                 .frame(width: 20, height: 20 / AppGlyph.aspectRatio)
+                .offset(y: -3)
         }
         .padding(.horizontal, 14)
         .padding(.bottom, 10)

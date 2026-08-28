@@ -21,8 +21,6 @@ final class Refresher {
     private var penalty = 1
     private(set) var nextPollAt = Date.distantPast
 
-    /// How long until the next automatic attempt. Nil once it is due, so the
-    /// caller can fall back to whatever it normally shows.
     var retryCountdown: String? {
         let seconds = nextPollAt.timeIntervalSinceNow
         guard seconds >= 1 else { return nil }
@@ -78,10 +76,8 @@ final class Refresher {
             return min(base * penalty, maxInterval)
         }
 
-        // Only double while that still moves the interval. Past the cap the
-        // interval stops changing but the penalty would keep climbing, and
-        // recovery would then have to halve its way back down through steps
-        // that never did anything.
+        // Doubling past the cap would not change the interval, but recovery
+        // would still have to halve its way back down through those steps.
         if base * penalty < maxInterval { penalty *= 2 }
         let backoff = min(base * penalty, maxInterval)
         guard let retryAfter = rateLimit.retryAfter else { return backoff }
