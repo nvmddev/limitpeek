@@ -27,16 +27,22 @@ struct UsagePopover: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("Your usage limits")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-            if let account = store.selectedAccount {
-                Text(account.subtitle)
-                    .font(.system(size: 12))
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Your usage limits")
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                if let account = store.selectedAccount {
+                    Text(account.subtitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
             }
+            Spacer(minLength: 8)
+            AppGlyph()
+                .fill(.secondary)
+                .frame(width: 20, height: 20 / AppGlyph.aspectRatio)
         }
         .padding(.horizontal, 14)
         .padding(.bottom, 10)
@@ -75,13 +81,13 @@ struct UsagePopover: View {
             }
             .disabled(store.isRefreshing)
 
-            LaunchAtLoginRow()
-
             MenuActionRow(title: "Usage settings…") {
                 NSWorkspace.shared.open(URL(string: "https://claude.ai/settings/usage")!)
             }
 
             Divider().padding(.vertical, 6).padding(.horizontal, 8)
+
+            LaunchAtLoginRow()
 
             MenuActionRow(title: "Sign Out") { store.signOut() }
             MenuActionRow(title: "Quit", shortcut: "q") {
