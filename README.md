@@ -1,6 +1,4 @@
-<img src="docs/icon.png" width="96" align="right" alt="">
-
-# LimitPeek
+# LimitPeek <img src="docs/icon.png" width="100" align="right" alt="">
 
 Your Claude usage limits in the macOS menu bar.
 
