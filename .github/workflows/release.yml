@@ -71,6 +71,11 @@ jobs:
           echo "previous=${previous}" >> "$GITHUB_OUTPUT"
           echo "Releasing ${version} (previous: ${previous:-none})" >> "$GITHUB_STEP_SUMMARY"
 
+      # Pinned: the image default (16.4) can't do the universal build, and
+      # falls back to host-arch-only.
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.3.app
+
       - name: Check the icon is current
         run: ./scripts/make-icon.sh verify
 
@@ -137,7 +142,12 @@ jobs:
       - name: Verify bundle
         run: |
           set -euo pipefail
-          if find build/LimitPeek.app -name '*Tests*' -print -quit | grep -q .; then
+          APP=build/LimitPeek.app
+          # A release must never ship single-arch: build.sh falls back to the
+          # host architecture when the universal build fails.
+          lipo -info "$APP/Contents/MacOS/LimitPeek" | grep -q arm64
+          lipo -info "$APP/Contents/MacOS/LimitPeek" | grep -q x86_64
+          if find "$APP" -name '*Tests*' -print -quit | grep -q .; then
             echo "::error::test artifacts found inside the app bundle"
             exit 1
           fi

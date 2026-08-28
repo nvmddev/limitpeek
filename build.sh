@@ -65,7 +65,7 @@ fi
 echo "==> swift build ${BUILD_FLAGS[*]}"
 if ! swift build "${BUILD_FLAGS[@]}"; then
 	if [[ $UNIVERSAL -eq 1 ]]; then
-		echo "    universal build failed; falling back to host architecture only" >&2
+		echo "    WARNING: universal build failed; falling back to host architecture only" >&2
 		BUILD_FLAGS=(-c "$CONFIGURATION")
 		swift build "${BUILD_FLAGS[@]}"
 	else

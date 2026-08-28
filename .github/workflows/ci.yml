@@ -21,6 +21,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Pinned: the image default (16.4) can't do the universal build, and
+      # falls back to host-arch-only.
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.3.app
+
       - name: Show toolchain
         run: |
           swift --version
