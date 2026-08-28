@@ -1,4 +1,8 @@
-# LimitPeek <img src="docs/icon.png" width="100" align="right" alt="">
+<div align="center">
+
+<img src="docs/icon.png" width="112" alt="">
+
+# LimitPeek
 
 Your Claude usage limits in the macOS menu bar.
 
@@ -6,6 +10,8 @@ Your Claude usage limits in the macOS menu bar.
 [![Latest release](https://img.shields.io/github/v/release/nvmddev/limitpeek?sort=semver&label=release)](https://github.com/nvmddev/limitpeek/releases/latest)
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+</div>
 
 The 5-hour window sits in the menu bar as a bar and a percentage. Everything
 else — weekly limits, usage credits — is one click away.
