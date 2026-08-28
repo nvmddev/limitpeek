@@ -1,0 +1,13 @@
+.build/
+.swiftpm/
+build/
+dist/
+*.xcodeproj
+.vscode/
+.DS_Store
+*.xcuserdatad
+
+# signing material
+Resources/embedded.provisionprofile
+*.p12
+*.cer

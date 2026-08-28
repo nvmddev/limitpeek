@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build & test
+    # Pinned, so a runner-image rollover can't turn a green branch red overnight.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Check the icon is current
+        run: ./scripts/make-icon.sh verify
+
+      - name: Test
+        run: swift test
+
+      - name: Build app bundle
+        run: ./build.sh
+
+      - name: Verify bundle
+        run: |
+          set -euo pipefail
+          APP=build/LimitPeek.app
+          lipo -info "$APP/Contents/MacOS/LimitPeek" | grep -q arm64
+          lipo -info "$APP/Contents/MacOS/LimitPeek" | grep -q x86_64
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist"
+          # The test bundle must never end up in the shipped app: it carries the
+          # API fixtures.
+          if find "$APP" -name '*Tests*' -print -quit | grep -q .; then
+            echo "::error::test artifacts found inside $APP"
+            exit 1
+          fi
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent build/LimitPeek.app dist/LimitPeek.zip
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: LimitPeek-${{ github.sha }}
+          path: dist/LimitPeek.zip
+          retention-days: 14
+          if-no-files-found: error
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: shellcheck
+        run: shellcheck build.sh scripts/*.sh
+
+      # Pinned: this is piped into bash.
+      - name: actionlint
+        env:
+          ACTIONLINT_VERSION: "1.7.7"
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar xz actionlint
+          ./actionlint -color
+
+  release-scripts:
+    name: Smoke-test release scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # These decide what a release is called and what it says, so a break has
+      # to surface here rather than mid-release.
+      - name: Exercise version and notes generation
+        run: |
+          set -euo pipefail
+          echo "latest:      $(scripts/version.sh latest)"
+          echo "next (auto): $(scripts/version.sh next auto)"
+          echo "app-changed: $(scripts/version.sh app-changed || true)"
+          scripts/release-notes.sh "$(scripts/version.sh next auto)" >> "$GITHUB_STEP_SUMMARY"

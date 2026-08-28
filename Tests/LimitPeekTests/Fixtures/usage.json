@@ -1,0 +1,55 @@
+{
+  "five_hour": {
+    "utilization": 40.0,
+    "resets_at": "2026-01-15T16:20:00.405628+00:00",
+    "limit_dollars": null,
+    "used_dollars": null,
+    "remaining_dollars": null
+  },
+  "seven_day": {
+    "utilization": 25.0,
+    "resets_at": "2026-01-19T10:00:00.405646+00:00",
+    "limit_dollars": null,
+    "used_dollars": null,
+    "remaining_dollars": null
+  },
+  "seven_day_opus": null,
+  "seven_day_sonnet": null,
+  "extra_usage": {
+    "is_enabled": true,
+    "monthly_limit": 1500,
+    "used_credits": 300.0,
+    "utilization": 20.0,
+    "currency": "USD",
+    "decimal_places": 2,
+    "disabled_reason": null
+  },
+  "limits": [
+    {
+      "kind": "session",
+      "group": "session",
+      "percent": 40,
+      "severity": "normal",
+      "resets_at": "2026-01-15T16:20:00.405628+00:00",
+      "scope": null,
+      "is_active": true
+    },
+    {
+      "kind": "weekly_all",
+      "group": "weekly",
+      "percent": 25,
+      "severity": "normal",
+      "resets_at": "2026-01-19T10:00:00.405646+00:00",
+      "scope": null,
+      "is_active": false
+    }
+  ],
+  "spend": {
+    "used": { "amount_minor": 300, "currency": "USD", "exponent": 2 },
+    "limit": { "amount_minor": 1500, "currency": "USD", "exponent": 2 },
+    "percent": 20,
+    "severity": "normal",
+    "enabled": true,
+    "disabled_reason": null
+  }
+}

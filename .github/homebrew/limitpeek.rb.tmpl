@@ -1,0 +1,27 @@
+# Rendered into <tap>/Casks/limitpeek.rb by .github/workflows/cask.yml.
+# Placeholders are substituted with sed — keep them literal.
+cask "limitpeek" do
+  version "__VERSION__"
+  sha256 "__SHA256__"
+
+  url "https://github.com/__REPO__/releases/download/v#{version}/LimitPeek-#{version}.zip"
+  name "LimitPeek"
+  desc "Claude usage limits in the macOS menu bar"
+  homepage "https://github.com/__REPO__"
+
+  # MenuBarExtra and @Observable put the floor at macOS 14. A bare symbol
+  # already means "this version or newer"; the ">= :sonoma" form is deprecated.
+  depends_on macos: :sonoma
+
+  app "LimitPeek.app"
+
+  uninstall quit: "dev.nevermind.LimitPeek"
+
+  # The OAuth token lives in the Keychain, which zap cannot reach. Sign out in
+  # the app before uninstalling to remove it.
+  zap trash: [
+    "~/Library/Preferences/dev.nevermind.LimitPeek.plist",
+    "~/Library/Caches/dev.nevermind.LimitPeek",
+    "~/Library/HTTPStorages/dev.nevermind.LimitPeek",
+  ]
+end

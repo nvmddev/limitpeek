@@ -1,0 +1,298 @@
+name: Release
+
+on:
+  # Either push a tag yourself…
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  # …or run this and let it derive and create the tag.
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump (auto = derive from Conventional Commits)"
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+      dry_run:
+        description: "Build and package, but don't tag or publish"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Queue rather than cancel: never interrupt a half-published release.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build & publish
+    runs-on: macos-15
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # version and changelog need the tag history
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Resolve version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump || 'auto' }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            previous="$(scripts/version.sh previous "$GITHUB_REF_NAME")"
+          else
+            version="$(scripts/version.sh next "$BUMP")"
+            previous="$(scripts/version.sh latest)"
+            if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
+              echo "::error::Tag v${version} already exists. Pick an explicit bump or delete the tag."
+              exit 1
+            fi
+            # Only guards the auto path — an explicit bump is a deliberate
+            # statement that this should ship regardless.
+            if [[ "$BUMP" == "auto" ]] && ! scripts/version.sh app-changed; then
+              echo "::error::Nothing under Sources/, Resources/ or Package.swift changed since ${previous}, so the build would be identical. Re-run with an explicit bump to release anyway."
+              exit 1
+            fi
+          fi
+          echo "version=${version}"   >> "$GITHUB_OUTPUT"
+          echo "previous=${previous}" >> "$GITHUB_OUTPUT"
+          echo "Releasing ${version} (previous: ${previous:-none})" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check the icon is current
+        run: ./scripts/make-icon.sh verify
+
+      - name: Test
+        run: swift test
+
+      - name: Import signing certificate
+        id: signing
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$CERT_P12" ]]; then
+            echo "identity=-"     >> "$GITHUB_OUTPUT"
+            echo "notarize=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No MACOS_CERTIFICATE_P12 — building ad-hoc signed. Downloads stay Gatekeeper-quarantined."
+            exit 0
+          fi
+
+          # A throwaway keychain, unlocked only for this job.
+          KEYCHAIN="${RUNNER_TEMP}/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          printf '%s' "$CERT_P12" | base64 --decode > "${RUNNER_TEMP}/cert.p12"
+          security import "${RUNNER_TEMP}/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "${RUNNER_TEMP}/cert.p12"
+          # Without this, codesign blocks on an interactive keychain prompt.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychain -d user -s "$KEYCHAIN"
+
+          if [[ -z "$IDENTITY" ]]; then
+            IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" \
+              | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+          fi
+          if [[ -z "$IDENTITY" ]]; then
+            echo "::error::Imported the certificate but found no 'Developer ID Application' identity in it."
+            exit 1
+          fi
+          echo "Signing as: ${IDENTITY}"
+
+          echo "identity=${IDENTITY}" >> "$GITHUB_OUTPUT"
+          if [[ -n "$APPLE_ID" ]]; then
+            echo "notarize=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "notarize=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Signed but not notarized (APPLE_ID secret missing)."
+          fi
+
+      - name: Build
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          CODESIGN_IDENTITY: ${{ steps.signing.outputs.identity }}
+        run: ./build.sh
+
+      - name: Verify bundle
+        run: |
+          set -euo pipefail
+          if find build/LimitPeek.app -name '*Tests*' -print -quit | grep -q .; then
+            echo "::error::test artifacts found inside the app bundle"
+            exit 1
+          fi
+
+      - name: Package ZIP
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent build/LimitPeek.app "dist/LimitPeek-${VERSION}.zip"
+
+      - name: Notarize app
+        if: steps.signing.outputs.notarize == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          scripts/notarize.sh "dist/LimitPeek-${VERSION}.zip"
+          xcrun stapler staple build/LimitPeek.app
+          # Re-zip so the download carries the ticket and Gatekeeper clears it
+          # without a network round-trip.
+          rm "dist/LimitPeek-${VERSION}.zip"
+          ditto -c -k --keepParent build/LimitPeek.app "dist/LimitPeek-${VERSION}.zip"
+
+      - name: Package DMG
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CODESIGN_IDENTITY: ${{ steps.signing.outputs.identity }}
+        run: scripts/make-dmg.sh
+
+      - name: Notarize DMG
+        if: steps.signing.outputs.notarize == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: scripts/notarize.sh "dist/LimitPeek-${VERSION}.dmg" --staple
+
+      # Published as an asset, and the cask job reads the hash back out of it:
+      # what ships is what the cask has to describe.
+      - name: Checksums
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd dist
+          shasum -a 256 "LimitPeek-${VERSION}.zip" "LimitPeek-${VERSION}.dmg" > checksums.txt
+          cat checksums.txt
+
+      - name: Generate release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PREVIOUS: ${{ steps.version.outputs.previous }}
+          NOTARIZED: ${{ steps.signing.outputs.notarize }}
+        run: |
+          set -euo pipefail
+          scripts/release-notes.sh "$VERSION" "$PREVIOUS" HEAD > "${RUNNER_TEMP}/notes.md"
+          cat "${RUNNER_TEMP}/notes.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: LimitPeek-${{ steps.version.outputs.version }}
+          path: dist/
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Create tag
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+          # A GITHUB_TOKEN push doesn't trigger workflows, so this can't loop
+          # back into this workflow's own tag trigger.
+          git push origin "v${VERSION}"
+
+      - name: Publish release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "v${VERSION}" \
+            --title "LimitPeek ${VERSION}" \
+            --notes-file "${RUNNER_TEMP}/notes.md" \
+            --verify-tag \
+            "dist/LimitPeek-${VERSION}.zip" \
+            "dist/LimitPeek-${VERSION}.dmg" \
+            "dist/checksums.txt"
+
+      - name: Open changelog PR
+        if: ${{ !inputs.dry_run }}
+        env:
+          # RELEASE_PAT makes the push and the PR an ordinary user event, which
+          # is what starts CI on them. With only GITHUB_TOKEN the PR's checks
+          # never report and it cannot merge.
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
+          HAS_PAT: ${{ secrets.RELEASE_PAT != '' }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PREVIOUS: ${{ steps.version.outputs.previous }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          BRANCH="docs/changelog-v${VERSION}"
+          git fetch origin "$DEFAULT_BRANCH"
+          git checkout -B "$BRANCH" "origin/${DEFAULT_BRANCH}"
+          scripts/changelog.sh prepend "$VERSION" "$PREVIOUS" "v${VERSION}"
+
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "CHANGELOG.md already up to date."
+            exit 0
+          fi
+          git add CHANGELOG.md
+          git commit -m "docs: changelog for v${VERSION}"
+
+          # From here every failure warns instead of failing: the release is
+          # already published, and a red run would misrepresent that.
+          if [[ "$HAS_PAT" == "true" ]]; then
+            git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          fi
+          git push -f origin "$BRANCH" || {
+            echo "::warning::Could not push ${BRANCH}. Run 'scripts/changelog.sh prepend ${VERSION}' locally."
+            exit 0
+          }
+
+          if [[ -z "$(gh pr list --head "$BRANCH" --base "$DEFAULT_BRANCH" --state open --json number --jq '.[].number')" ]]; then
+            gh pr create --base "$DEFAULT_BRANCH" --head "$BRANCH" \
+              --title "docs: changelog for v${VERSION}" \
+              --body "Generated by the release workflow for v${VERSION}." || {
+              echo "::warning::Could not open the changelog PR; the branch is pushed, so open it by hand."
+              exit 0
+            }
+          fi
+
+          if [[ "$HAS_PAT" != "true" ]]; then
+            echo "::warning::No RELEASE_PAT, so CI won't start for the changelog PR on its own. Close and reopen it once."
+          fi
+
+          gh pr merge "$BRANCH" --auto --squash --delete-branch \
+            --subject "docs: changelog for v${VERSION} [skip ci]" || \
+            echo "::warning::Could not enable auto-merge; merge the changelog PR by hand."
+
+  # Same definition the manual "Homebrew cask" run uses, so the path a release
+  # takes is the path that can be exercised on its own.
+  homebrew:
+    name: Update Homebrew cask
+    needs: release
+    if: ${{ !inputs.dry_run }}
+    uses: ./.github/workflows/cask.yml
+    with:
+      version: ${{ needs.release.outputs.version }}
+    secrets: inherit

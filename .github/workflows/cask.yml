@@ -1,0 +1,105 @@
+name: Homebrew cask
+
+# Publishes the cask for an already-released version. A release calls this as
+# its last step, and it can be run by hand for a version whose release exists
+# but whose cask didn't make it — without re-releasing anything.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version to publish, without the leading v"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (blank = the latest release)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homebrew-cask
+  cancel-in-progress: false
+
+jobs:
+  cask:
+    name: Push cask to tap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve version and checksum
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          # --repo throughout: gh otherwise infers the repository from the
+          # checkout's git remote, making this depend on the working directory.
+          version="$INPUT_VERSION"
+          if [[ -z "$version" ]]; then
+            version="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq '.tagName')"
+            version="${version#v}"
+            echo "No version given — using the latest release: ${version}"
+          fi
+
+          gh release download "v${version}" --repo "$GITHUB_REPOSITORY" \
+            --pattern checksums.txt --dir "$RUNNER_TEMP"
+          zip="LimitPeek-${version}.zip"
+          sha256="$(awk -v f="$zip" '$2 == f { print $1 }' "${RUNNER_TEMP}/checksums.txt")"
+          if [[ -z "$sha256" ]]; then
+            echo "::error::No entry for ${zip} in the checksums.txt of release v${version}."
+            exit 1
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "sha256=${sha256}"   >> "$GITHUB_OUTPUT"
+
+      - name: Push cask to tap
+        env:
+          # Fine-grained PAT with contents:write on the tap repo. Unset = skip.
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAP_REPO: ${{ vars.HOMEBREW_TAP_REPO }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+          SHA256: ${{ steps.resolve.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::notice::HOMEBREW_TAP_TOKEN not set — skipping the cask update."
+            exit 0
+          fi
+          TAP_REPO="${TAP_REPO:-${GITHUB_REPOSITORY_OWNER}/homebrew-tap}"
+
+          gh repo clone "$TAP_REPO" tap -- --depth=1
+          mkdir -p tap/Casks
+          sed -e "s|__VERSION__|${VERSION}|g" \
+              -e "s|__SHA256__|${SHA256}|g" \
+              -e "s|__REPO__|${GITHUB_REPOSITORY}|g" \
+              .github/homebrew/limitpeek.rb.tmpl > tap/Casks/limitpeek.rb
+
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Stage first: a plain git diff only looks at tracked files, so a new
+          # untracked cask would read as "nothing changed".
+          git add Casks/limitpeek.rb
+          if git diff --cached --quiet; then
+            echo "Cask already at ${VERSION}."
+            exit 0
+          fi
+          git commit -m "limitpeek ${VERSION}"
+
+          # GH_TOKEN is the gh CLI's credential, not git's. gh repo clone leaves
+          # a remote URL carrying nothing, so the push needs the token in it.
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${TAP_REPO}.git"
+          # -u origin HEAD: a tap created without an initial commit clones to an
+          # unborn branch with no upstream.
+          if ! git push -u origin HEAD; then
+            echo "::error::Push to ${TAP_REPO} failed. HOMEBREW_TAP_TOKEN needs contents:write there."
+            exit 1
+          fi

@@ -1,0 +1,82 @@
+import Foundation
+
+// Wire format of GET /api/oauth/usage, decoded with .convertFromSnakeCase.
+// Almost everything is optional: unused buckets come back null, and the set of
+// bucket names grows over time.
+
+struct UsageResponse: Decodable, Sendable {
+    /// Preferred source for the UI: ordered, and new limit kinds appear here
+    /// without needing a new named field.
+    var limits: [LimitEntry] = []
+
+    // Fallback for responses where `limits` is empty.
+    var fiveHour: RateWindow?
+    var sevenDay: RateWindow?
+    var sevenDayOpus: RateWindow?
+    var sevenDaySonnet: RateWindow?
+
+    var spend: Spend?
+    var extraUsage: ExtraUsage?
+}
+
+struct RateWindow: Decodable, Sendable {
+    /// Already 0–100, not 0–1.
+    var utilization: Double?
+    var resetsAt: Date?
+}
+
+struct LimitEntry: Decodable, Sendable {
+    var kind: String
+    var group: String?
+    /// Already 0–100.
+    var percent: Double
+    var severity: Severity?
+    var resetsAt: Date?
+    var scope: Scope?
+    var isActive: Bool?
+
+    struct Scope: Decodable, Sendable {
+        var model: Label?
+        var surface: Label?
+
+        struct Label: Decodable, Sendable {
+            var displayName: String
+        }
+    }
+}
+
+/// Usage credits. Money arrives in minor units with an exponent, so it is
+/// converted with Decimal rather than Double.
+struct Spend: Decodable, Sendable {
+    var used: Money?
+    var limit: Money?
+    var percent: Double?
+    var severity: Severity?
+    var enabled: Bool?
+
+    struct Money: Decodable, Sendable {
+        var amountMinor: Int
+        var currency: String?
+        var exponent: Int
+
+        var amount: Decimal {
+            Decimal(amountMinor) / pow(Decimal(10), exponent)
+        }
+    }
+}
+
+struct ExtraUsage: Decodable, Sendable {
+    var isEnabled: Bool?
+    var utilization: Double?
+    var currency: String?
+    var disabledReason: String?
+}
+
+enum Severity: String, Decodable, Sendable {
+    case normal, warning, critical
+    // Unknown severities degrade rather than failing the decode.
+    init(from decoder: any Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = Severity(rawValue: raw) ?? .normal
+    }
+}
