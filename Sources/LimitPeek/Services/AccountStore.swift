@@ -11,6 +11,14 @@ final class AccountStore {
     private(set) var display: UsageDisplay?
     private(set) var isRefreshing = false
     private(set) var lastError: String?
+    /// Set by a 429 and cleared by the next clean poll; the Refresher reads it
+    /// to decide how far to back off.
+    private(set) var rateLimit: RateLimit?
+
+    struct RateLimit {
+        /// What the server asked for, when it sent a Retry-After.
+        var retryAfter: TimeInterval?
+    }
 
     /// Set while a sign-in is in flight, to verify the pasted code against the
     /// challenge that started it.
@@ -104,6 +112,10 @@ final class AccountStore {
             }
             display = UsageDisplay(response)
             lastError = nil
+            rateLimit = nil
+        } catch APIError.rateLimited(let retryAfter) {
+            rateLimit = RateLimit(retryAfter: retryAfter)
+            lastError = APIError.rateLimited(retryAfter: retryAfter).localizedDescription
         } catch {
             lastError = error.localizedDescription
         }

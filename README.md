@@ -50,8 +50,9 @@ paste the code back.
 
 <sub>Sample account; the numbers are the response the tests pin.</sub>
 
-It polls every five minutes, stops while the machine is asleep, and stretches to
-fifteen minutes in Low Power Mode.
+It polls every three minutes, stops while the machine is asleep, and stretches to
+five minutes in Low Power Mode. If the server rate-limits it, it backs off and
+eases back to the normal cadence once requests land again.
 
 ## Requirements
 

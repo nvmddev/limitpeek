@@ -91,8 +91,9 @@ struct UsagePopover: View {
     }
 
     private var freshnessText: String? {
-        guard let fetchedAt = store.display?.fetchedAt else { return nil }
         if store.isRefreshing { return "Updating…" }
+        if store.rateLimit != nil, let countdown = refresher.retryCountdown { return countdown }
+        guard let fetchedAt = store.display?.fetchedAt else { return nil }
         if Date().timeIntervalSince(fetchedAt) < 60 { return "Just updated" }
         return fetchedAt.formatted(.relative(presentation: .numeric, unitsStyle: .abbreviated))
     }

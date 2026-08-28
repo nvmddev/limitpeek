@@ -51,6 +51,22 @@ enum API {
         plain.formatOptions = [.withInternetDateTime]
         return plain.date(from: value)
     }
+
+    /// `Retry-After` is either a count of seconds or an HTTP date. The endpoint
+    /// has been seen sending 0, which is no answer at all — anything under a
+    /// second is treated as absent so the caller falls back to its own backoff.
+    static func parseRetryAfter(_ raw: String?) -> TimeInterval? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
+        if let seconds = TimeInterval(raw) { return seconds >= 1 ? seconds : nil }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "GMT")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        guard let date = formatter.date(from: raw) else { return nil }
+        let seconds = date.timeIntervalSinceNow
+        return seconds >= 1 ? seconds : nil
+    }
 }
 
 enum APIError: Error, LocalizedError {
@@ -59,6 +75,8 @@ enum APIError: Error, LocalizedError {
     /// 403: valid token, wrong scopes. Refreshing cannot fix it.
     case forbidden(scopes: [String])
     case noStoredToken
+    /// 429: polling faster than the endpoint allows.
+    case rateLimited(retryAfter: TimeInterval?)
     case http(status: Int)
     case malformedResponse
 
@@ -70,6 +88,8 @@ enum APIError: Error, LocalizedError {
             "Not permitted to read usage (scopes: \(scopes.joined(separator: ", "))). Sign out and in again."
         case .noStoredToken:
             "No saved sign-in found. Sign out and in again."
+        case .rateLimited:
+            "Rate limited by Claude. Retrying automatically."
         case .http(let status):
             "Server returned \(status)."
         case .malformedResponse:

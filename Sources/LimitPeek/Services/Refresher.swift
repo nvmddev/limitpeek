@@ -1,15 +1,37 @@
 import AppKit
 import Foundation
+import Observation
 
-/// Decides when to poll: slow and tolerant, paused while the machine sleeps,
-/// stretched in Low Power Mode.
+/// Decides when to poll: paused while the machine sleeps, stretched in Low
+/// Power Mode.
 @MainActor
+@Observable
 final class Refresher {
     static let popoverStaleAfter: TimeInterval = 10
 
-    private let normalInterval: Duration = .seconds(300)
-    private let lowPowerInterval: Duration = .seconds(900)
-    private let tolerance: Duration = .seconds(60)
+    private let normalInterval: Duration = .seconds(180)
+    private let lowPowerInterval: Duration = .seconds(300)
+    private let maxInterval: Duration = .seconds(300)
+    private let tolerance: Duration = .seconds(15)
+
+    /// Multiplies the interval while the server is answering 429. Doubling on a
+    /// rejection and halving on a clean poll settles just under whatever the
+    /// endpoint actually allows, instead of alternating between the base rate
+    /// and a rejection forever.
+    private var penalty = 1
+    private(set) var nextPollAt = Date.distantPast
+
+    /// How long until the next automatic attempt. Nil once it is due, so the
+    /// caller can fall back to whatever it normally shows.
+    var retryCountdown: String? {
+        let seconds = nextPollAt.timeIntervalSinceNow
+        guard seconds >= 1 else { return nil }
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.hour, .minute, .second]
+        formatter.unitsStyle = .abbreviated
+        formatter.maximumUnitCount = 1
+        return formatter.string(from: seconds).map { "retrying in \($0)" }
+    }
 
     private weak var store: AccountStore?
     private var pollTask: Task<Void, Never>?
@@ -23,8 +45,11 @@ final class Refresher {
         resume()
     }
 
+    /// Opening the popover asks for a reading, but never one that would spend a
+    /// request the server has already told us to hold back.
     func refreshIfStale() {
         guard let store else { return }
+        guard store.rateLimit == nil || Date() >= nextPollAt else { return }
         let age = store.display.map { Date().timeIntervalSince($0.fetchedAt) }
         if age == nil || age! > Self.popoverStaleAfter {
             Task { await store.refresh() }
@@ -38,12 +63,29 @@ final class Refresher {
                 guard let self, let store = self.store else { return }
                 await store.refresh()
 
-                let interval = ProcessInfo.processInfo.isLowPowerModeEnabled
-                    ? self.lowPowerInterval
-                    : self.normalInterval
+                let interval = self.nextInterval(after: store.rateLimit)
+                self.nextPollAt = Date().addingTimeInterval(interval.seconds)
                 try? await Task.sleep(for: interval, tolerance: self.tolerance)
             }
         }
+    }
+
+    private func nextInterval(after rateLimit: AccountStore.RateLimit?) -> Duration {
+        let base = ProcessInfo.processInfo.isLowPowerModeEnabled ? lowPowerInterval : normalInterval
+
+        guard let rateLimit else {
+            penalty = max(1, penalty / 2)
+            return min(base * penalty, maxInterval)
+        }
+
+        // Only double while that still moves the interval. Past the cap the
+        // interval stops changing but the penalty would keep climbing, and
+        // recovery would then have to halve its way back down through steps
+        // that never did anything.
+        if base * penalty < maxInterval { penalty *= 2 }
+        let backoff = min(base * penalty, maxInterval)
+        guard let retryAfter = rateLimit.retryAfter else { return backoff }
+        return max(backoff, .seconds(retryAfter))
     }
 
     private func observeSleepWake() {
@@ -57,4 +99,8 @@ final class Refresher {
             MainActor.assumeIsolated { self?.resume() }
         })
     }
+}
+
+private extension Duration {
+    var seconds: TimeInterval { TimeInterval(components.seconds) }
 }

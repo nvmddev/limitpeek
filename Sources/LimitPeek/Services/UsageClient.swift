@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 struct UsageClient: Sendable {
     var session: URLSession = API.makeSession()
@@ -34,8 +35,35 @@ struct UsageClient: Sendable {
             throw APIError.unauthorized
         case 403:
             throw APIError.forbidden(scopes: scopes)
+        case 429:
+            Self.logRateLimit(http, body: data)
+            throw APIError.rateLimited(
+                retryAfter: API.parseRetryAfter(http.value(forHTTPHeaderField: "Retry-After")))
         default:
             throw APIError.http(status: http.statusCode)
         }
+    }
+
+    private static let log = Logger(subsystem: "dev.nevermind.LimitPeek", category: "ratelimit")
+
+    /// The server's own account of the limit, which is otherwise invisible:
+    /// `Retry-After` alone has proved useless. Response headers and an error
+    /// body only — the token is in the request, and never goes near this.
+    private static func logRateLimit(_ response: HTTPURLResponse, body: Data) {
+        let interesting = response.allHeaderFields
+            .map { (name: "\($0.key)".lowercased(), value: "\($0.value)") }
+            .filter { $0.name.contains("ratelimit") || $0.name.contains("retry")
+                || $0.name.contains("request-id") || $0.name == "date" }
+            .sorted { $0.name < $1.name }
+            .map { "\($0.name): \($0.value)" }
+            .joined(separator: " | ")
+        // Every name too, to prove nothing informative is being filtered out.
+        let names = response.allHeaderFields.keys
+            .map { "\($0)".lowercased() }.sorted().joined(separator: ",")
+        let text = String(decoding: body.prefix(512), as: UTF8.self)
+        log.error("""
+            429 headers [\(interesting, privacy: .public)] \
+            all [\(names, privacy: .public)] body [\(text, privacy: .public)]
+            """)
     }
 }
