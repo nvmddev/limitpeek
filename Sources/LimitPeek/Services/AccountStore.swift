@@ -102,8 +102,8 @@ final class AccountStore {
 
     /// Refreshes before expiry, and once more if the server rejects the token
     /// anyway (clock skew, early revocation).
-    private func withValidToken<T>(for account: Account,
-                                   _ body: (String, [String]) async throws -> T) async throws -> T {
+    private func withValidToken<T: Sendable>(for account: Account,
+                                          _ body: (String, [String]) async throws -> T) async throws -> T {
         guard var pair = try cachedToken(for: account) else {
             throw APIError.noStoredToken
         }
