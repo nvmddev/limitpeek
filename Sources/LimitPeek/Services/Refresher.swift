@@ -1,9 +1,8 @@
 import AppKit
 import Foundation
 
-/// Decides when to poll: a long interval with generous tolerance, nothing while
-/// the machine is asleep, one immediate poll on wake, and a stretched interval
-/// in Low Power Mode.
+/// Decides when to poll: slow and tolerant, paused while the machine sleeps,
+/// stretched in Low Power Mode.
 @MainActor
 final class Refresher {
     static let popoverStaleAfter: TimeInterval = 10

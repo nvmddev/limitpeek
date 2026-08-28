@@ -29,7 +29,6 @@ extension UsageDisplay {
 
         var rows: [Row] = []
 
-        // `limits` is ordered, carries severity, and gains new kinds on its own.
         if !response.limits.isEmpty {
             rows = response.limits.map { entry in
                 Row(id: entry.kind + (entry.scope?.model?.displayName ?? ""),
@@ -39,7 +38,6 @@ extension UsageDisplay {
                     severity: entry.severity ?? .normal)
             }
         } else {
-            // For responses where `limits` is absent.
             let named: [(String, String, RateWindow?)] = [
                 ("session", "5-hour limit", response.fiveHour),
                 ("weekly_all", "Weekly · all models", response.sevenDay),
@@ -52,7 +50,7 @@ extension UsageDisplay {
             }
         }
 
-        // `spend` over `extra_usage`: exact minor-unit money with a currency.
+        // `spend` over `extra_usage`: exact money with a currency.
         if let spend = response.spend, spend.enabled != false, let percent = spend.percent {
             rows.append(Row(id: "credits",
                             title: "Usage credits",

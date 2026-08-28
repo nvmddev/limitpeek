@@ -1,6 +1,5 @@
 import Foundation
 
-/// Read-only client for the two endpoints this app needs.
 struct UsageClient: Sendable {
     var session: URLSession = API.makeSession()
 

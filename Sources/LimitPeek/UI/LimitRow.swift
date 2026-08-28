@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// One usage limit: title, percentage, reset time, and a bar.
 struct LimitRow: View {
     let row: UsageDisplay.Row
 
@@ -47,7 +46,7 @@ struct LimitRow: View {
     }
 }
 
-/// A plain capsule gauge — ProgressView won't hold this height and radius.
+/// ProgressView won't hold this height and radius, so it is drawn by hand.
 struct GaugeBar: View {
     let fraction: Double
     var tint: Color = .accentColor
@@ -69,7 +68,6 @@ struct GaugeBar: View {
 }
 
 enum ResetFormatter {
-    /// A countdown inside a week, a date beyond that or for credits.
     static func string(for row: UsageDisplay.Row, now: Date = Date()) -> String? {
         guard let resetsAt = row.resetsAt else { return nil }
         let interval = resetsAt.timeIntervalSince(now)

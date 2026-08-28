@@ -1,9 +1,8 @@
 import AppKit
 import Observation
 
-/// Re-rendering the label on every poll would be wasteful when the number has
-/// not moved, so the image is keyed on what is actually visible: the rounded
-/// percentage. A poll that shifts usage by 0.2% redraws nothing.
+/// Keyed on the rounded percentage, so a poll that moves usage by 0.2%
+/// redraws nothing.
 @MainActor
 @Observable
 final class MenuBarLabelCache {

@@ -5,8 +5,7 @@ import Foundation
 // bucket names grows over time.
 
 struct UsageResponse: Decodable, Sendable {
-    /// Preferred source for the UI: ordered, and new limit kinds appear here
-    /// without needing a new named field.
+    /// Preferred source: ordered, and new kinds appear here on their own.
     var limits: [LimitEntry] = []
 
     // Fallback for responses where `limits` is empty.
@@ -45,8 +44,7 @@ struct LimitEntry: Decodable, Sendable {
     }
 }
 
-/// Usage credits. Money arrives in minor units with an exponent, so it is
-/// converted with Decimal rather than Double.
+/// Usage credits. Money arrives in minor units, hence Decimal, not Double.
 struct Spend: Decodable, Sendable {
     var used: Money?
     var limit: Money?

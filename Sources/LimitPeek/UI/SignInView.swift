@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// First-run sign-in: opens the browser, takes the code the callback page
-/// shows. No embedded web view, so the app never sees a password.
+/// Opens the browser and takes the code the callback page shows. No embedded
+/// web view, so the app never sees a password.
 struct SignInView: View {
     @Environment(AccountStore.self) private var store
     @State private var pastedCode = ""

@@ -54,9 +54,9 @@ enum API {
 }
 
 enum APIError: Error, LocalizedError {
-    /// 401 — stale token, refreshing may fix it.
+    /// 401: stale token, refreshing may fix it.
     case unauthorized
-    /// 403 — valid token, wrong scopes. Refreshing cannot fix it.
+    /// 403: valid token, wrong scopes. Refreshing cannot fix it.
     case forbidden(scopes: [String])
     case noStoredToken
     case http(status: Int)

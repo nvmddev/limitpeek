@@ -1,8 +1,8 @@
 import Foundation
 import Security
 
-/// The OAuth token pair for one account. Lives in the Keychain and in memory —
-/// never UserDefaults, never a file, never a log line.
+/// The OAuth token pair for one account. Keychain and memory only, never
+/// UserDefaults, a file, or a log line.
 struct TokenPair: Codable, Sendable {
     var accessToken: String
     var refreshToken: String
@@ -27,7 +27,6 @@ enum KeychainError: Error, LocalizedError {
     }
 }
 
-/// Keychain-backed storage, keyed by account id.
 enum TokenStore {
     static let service = "dev.nevermind.LimitPeek.oauth"
 
@@ -72,9 +71,9 @@ enum TokenStore {
     }
 
     /// The data-protection Keychain reads without a prompt but needs a stable
-    /// signing identity, which ad-hoc builds don't have. Probe once per launch
-    /// rather than guessing, and apply the answer to every operation — mixing
-    /// the two means writing to one Keychain and reading from the other.
+    /// signing identity, which ad-hoc builds don't have. Probe once, then use
+    /// the same answer everywhere: mixing the two writes to one Keychain and
+    /// reads from the other.
     private static let usesDataProtectionKeychain: Bool = {
         let probe: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,

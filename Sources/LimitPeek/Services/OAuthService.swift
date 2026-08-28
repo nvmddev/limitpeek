@@ -2,14 +2,13 @@ import CryptoKit
 import Foundation
 
 enum OAuth {
-    /// Anthropic's public PKCE client. No secret involved — the proof of
-    /// possession is the verifier, which never leaves this process.
+    /// Public PKCE client. No secret: the verifier never leaves this process.
     static let clientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
     static let authorizeURL = URL(string: "https://claude.com/cai/oauth/authorize")!
     static let tokenURL = URL(string: "https://platform.claude.com/v1/oauth/token")!
 
-    /// Out-of-band redirect: the browser shows a code to paste back. Using this
-    /// instead of a loopback listener is what avoids the network.server entitlement.
+    /// Out-of-band redirect: the browser shows a code to paste back. A loopback
+    /// listener instead would need the network.server entitlement.
     static let redirectURI = "https://platform.claude.com/oauth/code/callback"
 
     /// Read-only. A token scoped this way cannot spend inference if it leaks.
@@ -32,7 +31,7 @@ struct PKCE: Sendable {
 
     private static func randomURLSafeString(byteCount: Int = 32) -> String {
         var bytes = [UInt8](repeating: 0, count: byteCount)
-        // SecRandomCopyBytes is the CSPRNG; never use Int.random for this.
+        // The CSPRNG. Never Int.random for this.
         _ = SecRandomCopyBytes(kSecRandomDefault, byteCount, &bytes)
         return Data(bytes).base64URLEncodedString()
     }
@@ -98,8 +97,6 @@ struct OAuthService: Sendable {
             "scope": pair.scopes.joined(separator: " ")
         ], fallbackRefreshToken: pair.refreshToken)
     }
-
-    // MARK: -
 
     private struct TokenResponse: Decodable {
         var accessToken: String
