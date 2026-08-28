@@ -14,7 +14,7 @@ Your Claude usage limits in the macOS menu bar.
 </div>
 
 The 5-hour window sits in the menu bar as a bar and a percentage. Everything
-else — weekly limits, usage credits — is one click away.
+else, like weekly limits and usage credits, is one click away.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/menubar-dark.png">
@@ -44,6 +44,7 @@ paste the code back.
 - The 5-hour limit, in the menu bar. Orange at 80%, red at 95%.
 - Weekly limits and usage credits in the popover, including per-model weekly
   buckets when your plan has them.
+- Bar and percentage in the menu bar, or only one of the two.
 - Launch at login, if you want it.
 
 <picture>

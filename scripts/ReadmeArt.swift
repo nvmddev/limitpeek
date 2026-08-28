@@ -54,9 +54,12 @@ struct MenuBarStrip: View {
 
     var body: some View {
         HStack(spacing: 24) {
-            MenuBarLabel.Content(percent: 40, tint: appearance.menuBarForeground)
-            MenuBarLabel.Content(percent: 84, tint: .orange)
-            MenuBarLabel.Content(percent: 97, tint: .red)
+            MenuBarLabel.Content(percent: 40, tint: nil,
+                                 foreground: appearance.menuBarForeground)
+            MenuBarLabel.Content(percent: 84, tint: .orange,
+                                 foreground: appearance.menuBarForeground)
+            MenuBarLabel.Content(percent: 97, tint: .red,
+                                 foreground: appearance.menuBarForeground)
         }
     }
 }

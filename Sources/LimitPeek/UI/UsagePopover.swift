@@ -2,6 +2,7 @@ import SwiftUI
 
 struct UsagePopover: View {
     @Environment(AccountStore.self) private var store
+    @AppStorage(MenuBarStyle.defaultsKey) private var style = MenuBarStyle.both
     let refresher: Refresher
 
     var body: some View {
@@ -88,6 +89,7 @@ struct UsagePopover: View {
 
             Divider().padding(.vertical, 6).padding(.horizontal, 8)
 
+            MenuBarStyleRow(style: $style)
             LaunchAtLoginRow()
 
             MenuActionRow(title: "Sign Out") { store.signOut() }
@@ -162,6 +164,67 @@ private struct OptionalShortcut: ViewModifier {
             content.keyboardShortcut(KeyEquivalent(key))
         } else {
             content
+        }
+    }
+}
+
+/// Picks what the menu bar item shows. One segmented row rather than a menu
+/// row per choice, which would outweigh everything above it. Drawn by hand
+/// because ImageRenderer cannot draw an AppKit-backed Picker, and
+/// `scripts/ReadmeArt.swift` renders this view for the README.
+struct MenuBarStyleRow: View {
+    @Binding var style: MenuBarStyle
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("Menu Bar").font(.system(size: 13))
+            Spacer(minLength: 8)
+            HStack(spacing: 2) {
+                ForEach(MenuBarStyle.allCases) { option in
+                    Segment(title: option.shortTitle,
+                            isSelected: style == option) { style = option }
+                }
+            }
+            .padding(2)
+            .background {
+                RoundedRectangle(cornerRadius: 7).fill(.quaternary.opacity(0.4))
+            }
+            .fixedSize()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 3)
+    }
+
+    private struct Segment: View {
+        let title: String
+        let isSelected: Bool
+        let action: () -> Void
+
+        @State private var isHovering = false
+
+        var body: some View {
+            Button(action: action) {
+                Text(title)
+                    .font(.system(size: 13))
+                    .lineLimit(1)
+                    .foregroundStyle(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    // Even segments, whatever the words are.
+                    .frame(minWidth: 46)
+                    .background {
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(background)
+                    }
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .onHover { isHovering = $0 }
+        }
+
+        private var background: AnyShapeStyle {
+            if isSelected { return AnyShapeStyle(.tint) }
+            return isHovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear)
         }
     }
 }

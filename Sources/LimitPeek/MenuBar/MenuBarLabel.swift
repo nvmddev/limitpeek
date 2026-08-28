@@ -3,7 +3,9 @@ import SwiftUI
 
 /// A small gauge plus the percentage, rendered to one NSImage because
 /// MenuBarExtra only reliably renders a Text or an Image. Below the warning
-/// threshold it is a template image, tinted by macOS to match the menu bar.
+/// threshold it is a template image, tinted by macOS to match the menu bar;
+/// above it the gauge carries its own colour and the rest is drawn in the
+/// menu bar's own foreground, which a template image cannot express.
 enum MenuBarLabel {
     static let warningThreshold = 80.0
     static let criticalThreshold = 95.0
@@ -33,10 +35,23 @@ enum MenuBarLabel {
         Set([1.0, 2.0] + NSScreen.screens.map { Double($0.backingScaleFactor) }).sorted()
     }
 
+    /// What macOS would tint a template image with, for the colour the
+    /// tinted label has to match by hand.
     @MainActor
-    static func image(percent: Double?) -> NSImage {
+    static var menuBarForeground: Color {
+        NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? .white : .black
+    }
+
+    @MainActor
+    static func image(percent: Double?, style: MenuBarStyle) -> NSImage {
         let tint = tint(for: percent)
-        let content = Content(percent: percent, tint: tint)
+        // Template images are alpha-only, so black stands in for whatever
+        // macOS tints them with.
+        let content = Content(percent: percent,
+                              style: style,
+                              tint: tint,
+                              foreground: tint == nil ? .black : menuBarForeground)
 
         let image = NSImage()
         var pointSize: NSSize?
@@ -78,14 +93,22 @@ enum MenuBarLabel {
     /// colour for the README.
     struct Content: View {
         let percent: Double?
+        var style = MenuBarStyle.both
+        /// Colour of the gauge alone; nil leaves it in `foreground`.
         let tint: Color?
+        /// Everything the gauge does not colour: the percentage, and the
+        /// gauge itself while it is untinted.
+        var foreground: Color = .black
 
         private var fraction: Double {
             min(max((percent ?? 0) / 100, 0), 1)
         }
 
-        /// Template images are alpha-only, so black becomes the tint.
-        private var foreground: Color { tint ?? .black }
+        private var gauge: Color { tint ?? foreground }
+
+        /// Without the gauge the number is the only thing left to carry the
+        /// warning colour.
+        private var textColor: Color { style.showsBar ? foreground : gauge }
 
         private var trackWidth: Double { barWidth - 2 * fillInset }
         private var fillHeight: Double { barHeight - 2 * fillInset }
@@ -107,20 +130,24 @@ enum MenuBarLabel {
 
         var body: some View {
             HStack(spacing: spacing) {
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: barCornerRadius, style: .continuous)
-                        .strokeBorder(foreground.opacity(outlineOpacity),
-                                      lineWidth: strokeWidth)
-                    RoundedRectangle(cornerRadius: fillCornerRadius, style: .continuous)
-                        .fill(foreground)
-                        .frame(width: fillWidth, height: fillHeight)
-                        .padding(.leading, fillInset)
+                if style.showsBar {
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: barCornerRadius, style: .continuous)
+                            .strokeBorder(gauge.opacity(outlineOpacity),
+                                          lineWidth: strokeWidth)
+                        RoundedRectangle(cornerRadius: fillCornerRadius, style: .continuous)
+                            .fill(gauge)
+                            .frame(width: fillWidth, height: fillHeight)
+                            .padding(.leading, fillInset)
+                    }
+                    .frame(width: barWidth, height: barHeight)
                 }
-                .frame(width: barWidth, height: barHeight)
-                Text(text)
-                    .font(Font(textFont))
-                    .foregroundStyle(foreground)
-                    .frame(width: textWidth, height: height, alignment: .leading)
+                if style.showsPercentage {
+                    Text(text)
+                        .font(Font(textFont))
+                        .foregroundStyle(textColor)
+                        .frame(width: textWidth, height: height, alignment: .leading)
+                }
             }
             .frame(height: height)
             .padding(.horizontal, 1)
