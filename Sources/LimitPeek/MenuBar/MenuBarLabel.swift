@@ -1,19 +1,24 @@
 import AppKit
 import SwiftUI
 
-/// A capsule gauge plus the percentage, rendered to one NSImage because
+/// A small gauge plus the percentage, rendered to one NSImage because
 /// MenuBarExtra only reliably renders a Text or an Image. Below the warning
 /// threshold it is a template image, tinted by macOS to match the menu bar.
 enum MenuBarLabel {
     static let warningThreshold = 80.0
     static let criticalThreshold = 95.0
 
-    /// Whole points throughout — a fractional edge on an image this small looks
-    /// smeared. Change one and check the arithmetic still comes out even.
-    private static let barWidth = 34.0
-    private static let barHeight = 16.0
+    /// Shaped like the system battery indicator. Whole points only, or the
+    /// edges land on half a pixel and smear.
+    private static let barWidth = 26.0
+    private static let barHeight = 12.0
     private static let strokeWidth = 1.0
     private static let fillInset = 2.0
+    private static let minFillWidth = 2.0
+    /// Concentric with the outline, so the gap stays even in the corners.
+    private static let barCornerRadius = 3.5
+    private static let fillCornerRadius = barCornerRadius - fillInset
+    private static let outlineOpacity = 0.5
     private static let spacing = 5.0
     private static let height = 16.0
 
@@ -80,9 +85,14 @@ enum MenuBarLabel {
         /// Template images are alpha-only, so black becomes the tint.
         private var foreground: Color { tint ?? .black }
 
-        private var inset: Double { strokeWidth + fillInset }
-        private var trackWidth: Double { barWidth - 2 * inset }
-        private var fillHeight: Double { barHeight - 2 * inset }
+        private var trackWidth: Double { barWidth - 2 * fillInset }
+        private var fillHeight: Double { barHeight - 2 * fillInset }
+
+        /// A sliver at 1%, never a dot wide enough to look like a switch.
+        private var fillWidth: Double {
+            guard percent != nil, fraction > 0 else { return 0 }
+            return max((trackWidth * fraction).rounded(), minFillWidth)
+        }
 
         private var text: String {
             percent.map { "\(Int($0.rounded()))%" } ?? "—"
@@ -96,16 +106,13 @@ enum MenuBarLabel {
         var body: some View {
             HStack(spacing: spacing) {
                 ZStack(alignment: .leading) {
-                    Capsule()
-                        .strokeBorder(foreground.opacity(0.6), lineWidth: strokeWidth)
-                    if percent != nil {
-                        Capsule()
-                            .fill(foreground)
-                            // Never narrower than a dot, so 1% still shows.
-                            .frame(width: max((trackWidth * fraction).rounded(), fillHeight),
-                                   height: fillHeight)
-                            .padding(.leading, inset)
-                    }
+                    RoundedRectangle(cornerRadius: barCornerRadius, style: .continuous)
+                        .strokeBorder(foreground.opacity(outlineOpacity),
+                                      lineWidth: strokeWidth)
+                    RoundedRectangle(cornerRadius: fillCornerRadius, style: .continuous)
+                        .fill(foreground)
+                        .frame(width: fillWidth, height: fillHeight)
+                        .padding(.leading, fillInset)
                 }
                 .frame(width: barWidth, height: barHeight)
                 Text(text)

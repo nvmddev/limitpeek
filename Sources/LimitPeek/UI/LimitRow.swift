@@ -59,8 +59,10 @@ struct GaugeBar: View {
                     .fill(.quaternary)
                 Capsule()
                     .fill(tint)
-                    .frame(width: max(geometry.size.width * fraction, fraction > 0 ? 6 : 0))
+                    // A sliver at 1%, not a dot.
+                    .frame(width: fraction > 0 ? max(geometry.size.width * fraction, 3) : 0)
             }
+            .clipShape(Capsule())
         }
         .frame(height: 6)
     }
