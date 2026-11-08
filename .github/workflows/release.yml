@@ -28,14 +28,16 @@ concurrency:
 jobs:
   release:
     name: Build & publish
-    runs-on: macos-15
+    # macos-26 is the newest stable macOS image; use its default Xcode
+    # instead of hardcoding a path.
+    runs-on: macos-26
     permissions:
       contents: write
       pull-requests: write
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # version and changelog need the tag history
 
@@ -71,16 +73,16 @@ jobs:
           echo "previous=${previous}" >> "$GITHUB_OUTPUT"
           echo "Releasing ${version} (previous: ${previous:-none})" >> "$GITHUB_STEP_SUMMARY"
 
-      # Pinned: the image default (16.4) can't do the universal build, and
-      # falls back to host-arch-only.
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_26.3.app
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version
 
       - name: Check the icon is current
         run: ./scripts/make-icon.sh verify
 
       - name: Test
-        run: swift test
+        run: swift test -Xswiftc -warnings-as-errors
 
       - name: Import signing certificate
         id: signing
@@ -160,10 +162,13 @@ jobs:
         run: |
           set -euo pipefail
           APP=build/LimitPeek.app
-          # A release must never ship single-arch: build.sh falls back to the
-          # host architecture when the universal build fails.
-          lipo -info "$APP/Contents/MacOS/LimitPeek" | grep -q arm64
-          lipo -info "$APP/Contents/MacOS/LimitPeek" | grep -q x86_64
+          archs="$(lipo -archs "$APP/Contents/MacOS/LimitPeek")"
+          echo "architectures: ${archs}"
+          # Apple silicon only: the binary must be arm64, nothing else.
+          if [[ "$archs" != "arm64" ]]; then
+            echo "::error::release must be arm64-only (Apple silicon), got: ${archs}"
+            exit 1
+          fi
           if find "$APP" -name '*Tests*' -print -quit | grep -q .; then
             echo "::error::test artifacts found inside the app bundle"
             exit 1
@@ -258,7 +263,7 @@ jobs:
           scripts/release-notes.sh "$VERSION" "$PREVIOUS" HEAD > "${RUNNER_TEMP}/notes.md"
           cat "${RUNNER_TEMP}/notes.md" >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: LimitPeek-${{ steps.version.outputs.version }}
           path: dist/

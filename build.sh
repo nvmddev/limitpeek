@@ -2,7 +2,7 @@
 #
 # Builds build/LimitPeek.app from the SwiftPM package.
 #
-#   ./build.sh            release, universal
+#   ./build.sh            release, Apple silicon (arm64)
 #   ./build.sh --debug    debug, host arch only
 #   ./build.sh --run      build, then relaunch
 #
@@ -13,7 +13,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-# Universal builds and swift-testing need the full Xcode toolchain.
+# swift-testing needs the full Xcode toolchain.
 if [[ -z "${DEVELOPER_DIR:-}" && ! -x "$(xcode-select -p 2>/dev/null)/usr/bin/xcodebuild" ]]; then
 	for candidate in /Applications/Xcode*.app/Contents/Developer; do
 		if [[ -d "$candidate" ]]; then export DEVELOPER_DIR="$candidate"; break; fi
@@ -46,32 +46,23 @@ if [[ -z "${TEAM_ID:-}" && "$CODESIGN_IDENTITY" == "Developer ID Application:"* 
 fi
 
 CONFIGURATION="release"
-UNIVERSAL=1
 RUN_AFTER=0
 
 for arg in "$@"; do
 	case "$arg" in
-		--debug) CONFIGURATION="debug"; UNIVERSAL=0 ;;
+		--debug) CONFIGURATION="debug" ;;
 		--run)   RUN_AFTER=1 ;;
 		*) echo "unknown option: $arg" >&2; exit 2 ;;
 	esac
 done
 
 BUILD_FLAGS=(-c "$CONFIGURATION")
-if [[ $UNIVERSAL -eq 1 ]]; then
-	BUILD_FLAGS+=(--arch arm64 --arch x86_64)
+if [[ "$CONFIGURATION" == "release" ]]; then
+	BUILD_FLAGS+=(--arch arm64)
 fi
 
 echo "==> swift build ${BUILD_FLAGS[*]}"
-if ! swift build "${BUILD_FLAGS[@]}"; then
-	if [[ $UNIVERSAL -eq 1 ]]; then
-		echo "    WARNING: universal build failed; falling back to host architecture only" >&2
-		BUILD_FLAGS=(-c "$CONFIGURATION")
-		swift build "${BUILD_FLAGS[@]}"
-	else
-		exit 1
-	fi
-fi
+swift build "${BUILD_FLAGS[@]}"
 
 BIN_PATH="$(swift build "${BUILD_FLAGS[@]}" --show-bin-path)"
 APP="build/${APP_NAME}.app"

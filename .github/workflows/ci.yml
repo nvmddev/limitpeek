@@ -16,15 +16,11 @@ permissions:
 jobs:
   test:
     name: Build & test
-    # Pinned, so a runner-image rollover can't turn a green branch red overnight.
-    runs-on: macos-15
+    # macos-26 is the newest stable macOS image; use its default Xcode
+    # instead of hardcoding a path.
+    runs-on: macos-26
     steps:
-      - uses: actions/checkout@v7
-
-      # Pinned: the image default (16.4) can't do the universal build, and
-      # falls back to host-arch-only.
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_26.3.app
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Show toolchain
         run: |
@@ -35,7 +31,7 @@ jobs:
         run: ./scripts/make-icon.sh verify
 
       - name: Test
-        run: swift test
+        run: swift test -Xswiftc -warnings-as-errors
 
       - name: Build app bundle
         run: ./build.sh
@@ -44,8 +40,13 @@ jobs:
         run: |
           set -euo pipefail
           APP=build/LimitPeek.app
-          lipo -info "$APP/Contents/MacOS/LimitPeek" | grep -q arm64
-          lipo -info "$APP/Contents/MacOS/LimitPeek" | grep -q x86_64
+          archs="$(lipo -archs "$APP/Contents/MacOS/LimitPeek")"
+          echo "architectures: ${archs}"
+          # Apple silicon only: the binary must be arm64, nothing else.
+          if [[ "$archs" != "arm64" ]]; then
+            echo "::error::expected an arm64-only binary, got: ${archs}"
+            exit 1
+          fi
           codesign --verify --deep --strict --verbose=2 "$APP"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist"
           # The test bundle must never end up in the shipped app: it carries the
@@ -60,7 +61,7 @@ jobs:
           mkdir -p dist
           ditto -c -k --keepParent build/LimitPeek.app dist/LimitPeek.zip
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: LimitPeek-${{ github.sha }}
           path: dist/LimitPeek.zip
@@ -71,26 +72,32 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: shellcheck
         run: shellcheck build.sh scripts/*.sh
 
-      # Pinned: this is piped into bash.
+      # Pinned: verify the checksum before extracting or running the binary.
       - name: actionlint
         env:
-          ACTIONLINT_VERSION: "1.7.7"
+          ACTIONLINT_VERSION: "1.7.12"
+          ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
         run: |
           set -euo pipefail
-          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
-            | tar xz actionlint
-          ./actionlint -color
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          tarball="${work}/actionlint.tar.gz"
+          curl -fsSL -o "$tarball" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  ${tarball}" | sha256sum -c -
+          tar -xzf "$tarball" -C "$work" actionlint
+          "$work/actionlint" -color
 
   release-scripts:
     name: Smoke-test release scripts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 

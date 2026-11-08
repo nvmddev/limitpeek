@@ -27,9 +27,7 @@ struct PKCE: Sendable {
     }
 
     private static func randomURLSafeString(byteCount: Int = 32) -> String {
-        var bytes = [UInt8](repeating: 0, count: byteCount)
-        // The CSPRNG. Never Int.random for this.
-        _ = SecRandomCopyBytes(kSecRandomDefault, byteCount, &bytes)
+        let bytes = (0..<byteCount).map { _ in UInt8.random(in: .min ... .max) }
         return Data(bytes).base64URLEncodedString()
     }
 }
@@ -38,12 +36,14 @@ enum OAuthError: Error, LocalizedError {
     case invalidGrant
     case server(String)
     case malformedCode
+    case stateMismatch
 
     var errorDescription: String? {
         switch self {
         case .invalidGrant: "This sign-in has expired. Please sign in again."
         case .server(let message): message
         case .malformedCode: "That code doesn't look right. Copy the whole value from the page."
+        case .stateMismatch: "This code belongs to another sign-in. Start over."
         }
     }
 }
@@ -69,21 +69,30 @@ struct OAuthService: Sendable {
 
     /// The callback page shows `code#state`; accept that or a bare code.
     func exchange(pastedCode: String, pkce: PKCE) async throws -> TokenPair {
+        let callback = try Self.parseCallback(pastedCode, expectedState: pkce.state)
+
+        return try await requestToken(body: [
+            "grant_type": "authorization_code",
+            "code": callback.code,
+            "redirect_uri": OAuth.redirectURI,
+            "client_id": OAuth.clientID,
+            "code_verifier": pkce.verifier,
+            "state": callback.state
+        ], fallbackRefreshToken: nil)
+    }
+
+    static func parseCallback(_ pastedCode: String,
+                              expectedState: String) throws -> (code: String, state: String) {
         let trimmed = pastedCode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw OAuthError.malformedCode }
 
         let parts = trimmed.split(separator: "#", maxSplits: 1)
         let code = String(parts[0])
-        let state = parts.count > 1 ? String(parts[1]) : pkce.state
-
-        return try await requestToken(body: [
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": OAuth.redirectURI,
-            "client_id": OAuth.clientID,
-            "code_verifier": pkce.verifier,
-            "state": state
-        ], fallbackRefreshToken: nil)
+        guard !code.isEmpty else { throw OAuthError.malformedCode }
+        if parts.count > 1, String(parts[1]) != expectedState {
+            throw OAuthError.stateMismatch
+        }
+        return (code, expectedState)
     }
 
     func refresh(_ pair: TokenPair) async throws -> TokenPair {
@@ -130,7 +139,12 @@ struct OAuthService: Sendable {
                                     ?? "Sign-in failed (\(http.statusCode)).")
         }
 
-        let token = try decoder.decode(TokenResponse.self, from: data)
+        let token: TokenResponse
+        do {
+            token = try decoder.decode(TokenResponse.self, from: data)
+        } catch {
+            throw APIError.malformedResponse
+        }
         // A refresh may omit refresh_token, meaning "keep the old one".
         guard let refreshToken = token.refreshToken ?? fallbackRefreshToken else {
             throw APIError.malformedResponse

@@ -108,4 +108,34 @@ struct UsageDecodingTests {
         let response = try API.makeDecoder().decode(UsageResponse.self, from: Data(json.utf8))
         #expect(response.limits.first?.severity == .normal)
     }
+
+    @Test func toleratesNullLimitsAndMalformedEntries() throws {
+        let json = """
+        {"limits": [null,
+                    {"kind": "session", "percent": 5, "resets_at": null},
+                    {"kind": "weekly_all"}],
+         "five_hour": {"utilization": 10}}
+        """
+        let response = try API.makeDecoder().decode(UsageResponse.self, from: Data(json.utf8))
+
+        #expect(response.limits.map(\.kind) == ["session"])
+        #expect(response.fiveHour?.utilization == 10)
+    }
+
+    @Test func toleratesNullAndUnexpectedBuckets() throws {
+        let json = """
+        {"limits": null, "seven_day": {"utilization": 7}, "spend": "unexpected"}
+        """
+        let response = try API.makeDecoder().decode(UsageResponse.self, from: Data(json.utf8))
+
+        #expect(response.limits.isEmpty)
+        #expect(response.sevenDay?.utilization == 7)
+        #expect(response.spend == nil)
+    }
+
+    @Test func describesTheMenuBarState() {
+        #expect(MenuBarLabel.accessibilityDescription(percent: nil) == "Claude usage: no data")
+        #expect(MenuBarLabel.accessibilityDescription(percent: 42)
+                == "Claude usage: 42 percent of the 5-hour limit")
+    }
 }
