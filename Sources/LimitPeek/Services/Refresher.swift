@@ -7,7 +7,7 @@ import Observation
 @MainActor
 @Observable
 final class Refresher {
-    static let popoverStaleAfter: TimeInterval = 10
+    static let popoverStaleAfter: TimeInterval = 60
 
     private let normalInterval: Duration = .seconds(180)
     private let lowPowerInterval: Duration = .seconds(300)
@@ -21,14 +21,18 @@ final class Refresher {
     private var penalty = 1
     private(set) var nextPollAt = Date.distantPast
 
-    var retryCountdown: String? {
-        let seconds = nextPollAt.timeIntervalSinceNow
-        guard seconds >= 1 else { return nil }
+    private static let countdownFormatter: DateComponentsFormatter = {
         let formatter = DateComponentsFormatter()
         formatter.allowedUnits = [.hour, .minute, .second]
         formatter.unitsStyle = .abbreviated
         formatter.maximumUnitCount = 1
-        return formatter.string(from: seconds).map { "retrying in \($0)" }
+        return formatter
+    }()
+
+    var retryCountdown: String? {
+        let seconds = nextPollAt.timeIntervalSinceNow
+        guard seconds >= 1 else { return nil }
+        return Self.countdownFormatter.string(from: seconds).map { "retrying in \($0)" }
     }
 
     private weak var store: AccountStore?
@@ -48,10 +52,9 @@ final class Refresher {
     func refreshIfStale() {
         guard let store else { return }
         guard store.rateLimit == nil || Date() >= nextPollAt else { return }
-        let age = store.display.map { Date().timeIntervalSince($0.fetchedAt) }
-        if age == nil || age! > Self.popoverStaleAfter {
-            Task { await store.refresh() }
-        }
+        guard let fetchedAt = store.display?.fetchedAt,
+              Date().timeIntervalSince(fetchedAt) > Self.popoverStaleAfter else { return }
+        Task { await store.refresh() }
     }
 
     private func resume() {
