@@ -20,4 +20,12 @@ enum MenuBarStyle: String, CaseIterable, Identifiable {
         case .percentage: "%"
         }
     }
+
+    var accessibilityTitle: String {
+        switch self {
+        case .both: "Bar and percentage"
+        case .bar: "Bar only"
+        case .percentage: "Percentage only"
+        }
+    }
 }

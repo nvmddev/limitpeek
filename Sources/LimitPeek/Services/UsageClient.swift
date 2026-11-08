@@ -8,8 +8,10 @@ struct UsageClient: Sendable {
         try await get(API.usage, accessToken: accessToken, scopes: scopes)
     }
 
-    func fetchProfile(accessToken: String) async throws -> Account {
-        let response: ProfileResponse = try await get(API.profile, accessToken: accessToken)
+    func fetchProfile(accessToken: String, scopes: [String] = []) async throws -> Account {
+        let response: ProfileResponse = try await get(API.profile,
+                                                      accessToken: accessToken,
+                                                      scopes: scopes)
         return response.asAccount
     }
 
@@ -63,7 +65,7 @@ struct UsageClient: Sendable {
         let text = String(decoding: body.prefix(512), as: UTF8.self)
         log.error("""
             429 headers [\(interesting, privacy: .public)] \
-            all [\(names, privacy: .public)] body [\(text, privacy: .public)]
+            all [\(names, privacy: .public)] body [\(text, privacy: .private)]
             """)
     }
 }

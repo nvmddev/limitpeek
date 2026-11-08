@@ -20,7 +20,7 @@ brew install --cask nvmddev/tap/limitpeek
 \`\`\`
 
 Or download \`LimitPeek-${VERSION}.dmg\` below and drag **LimitPeek.app** into
-\`/Applications\`. Universal binary, macOS 14 or newer.
+\`/Applications\`. Apple silicon (arm64), macOS 14 or newer.
 MD
 
 if [[ "$NOTARIZED" != "true" ]]; then

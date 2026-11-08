@@ -44,8 +44,8 @@ enum MenuBarLabel {
     }
 
     @MainActor
-    static func image(percent: Double?, style: MenuBarStyle) -> NSImage {
-        let tint = tint(for: percent)
+    static func image(percent: Double?, style: MenuBarStyle, isDark: Bool) -> NSImage {
+        let tint = tint(for: percent, isDark: isDark)
         // Template images are alpha-only, so black stands in for whatever
         // macOS tints them with.
         let content = Content(percent: percent,
@@ -77,16 +77,21 @@ enum MenuBarLabel {
     }
 
     /// Nil means "template image, macOS picks the colour".
-    private static func tint(for percent: Double?) -> Color? {
+    private static func tint(for percent: Double?, isDark: Bool) -> Color? {
         guard let percent else { return nil }
-        if percent >= criticalThreshold { return Palette.critical }
-        if percent >= warningThreshold { return Palette.warning }
+        // The same quantised value the text shows, so 79.6% reads and colours
+        // as 80% here just like it does in the popover row.
+        let display = UsageDisplay.displayPercent(percent)
+        let scheme: ColorScheme = isDark ? .dark : .light
+        if display >= criticalThreshold { return Palette.critical(for: scheme) }
+        if display >= warningThreshold { return Palette.warning(for: scheme) }
         return nil
     }
 
     static func accessibilityDescription(percent: Double?) -> String {
-        guard let percent else { return "Claude usage: not signed in" }
-        return "Claude usage: \(Int(percent.rounded())) percent of the 5-hour limit"
+        guard let percent else { return "Claude usage: no data" }
+        // Same clamping and "over 100" rule as the drawn label.
+        return "Claude usage: \(UsageDisplay.percentDescription(percent)) of the 5-hour limit"
     }
 
     /// Not private: `scripts/ReadmeArt.swift` draws it at its own scale and
@@ -101,7 +106,8 @@ enum MenuBarLabel {
         var foreground: Color = .black
 
         private var fraction: Double {
-            min(max((percent ?? 0) / 100, 0), 1)
+            // Same quantisation as the text and tint; the sentinel clamps to 1.
+            min(UsageDisplay.displayPercent(percent ?? 0) / 100, 1)
         }
 
         private var gauge: Color { tint ?? foreground }
@@ -120,7 +126,7 @@ enum MenuBarLabel {
         }
 
         private var text: String {
-            percent.map { "\(Int($0.rounded()))%" } ?? "—"
+            percent.map(UsageDisplay.percentText) ?? "—"
         }
 
         /// Rounded up, or every edge in the image lands on a half pixel.

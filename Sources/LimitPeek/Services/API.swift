@@ -9,6 +9,7 @@ enum API {
     static func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 15
+        configuration.timeoutIntervalForResource = 30
         configuration.waitsForConnectivity = true
         configuration.httpCookieAcceptPolicy = .never
         configuration.httpShouldSetCookies = false
@@ -17,7 +18,7 @@ enum API {
     }
 
     /// One session for the whole app: connection reuse without adding state
-    /// per client. Tests and previews can still call `makeSession()`.
+    /// per client.
     static let shared = makeSession()
 
     static func makeDecoder() -> JSONDecoder {
@@ -77,13 +78,22 @@ enum API {
     /// `Retry-After` is either a count of seconds or an HTTP date. The endpoint
     /// has been seen sending 0, which is no answer at all — anything under a
     /// second is treated as absent so the caller falls back to its own backoff.
+    /// Values are capped so one header cannot park polling for days.
+    static let maximumRetryAfter: TimeInterval = 3600
+
     static func parseRetryAfter(_ raw: String?) -> TimeInterval? {
         guard let raw = raw?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
-        if let seconds = TimeInterval(raw) { return seconds >= 1 ? seconds : nil }
+        if let seconds = TimeInterval(raw) {
+            return validRetryAfter(seconds)
+        }
 
-        guard let date = Self.httpDateFormatter.date(from: raw) else { return nil }
-        let seconds = date.timeIntervalSinceNow
-        return seconds >= 1 ? seconds : nil
+        guard let date = httpDateFormatter.date(from: raw) else { return nil }
+        return validRetryAfter(date.timeIntervalSinceNow)
+    }
+
+    private static func validRetryAfter(_ seconds: TimeInterval) -> TimeInterval? {
+        guard seconds.isFinite, seconds >= 1 else { return nil }
+        return min(seconds, maximumRetryAfter)
     }
 }
 
@@ -103,9 +113,11 @@ enum APIError: Error, LocalizedError {
         case .unauthorized:
             "Sign-in expired."
         case .forbidden(let scopes):
-            "Not permitted to read usage (scopes: \(scopes.joined(separator: ", "))). Sign out and in again."
+            scopes.isEmpty
+                ? "Not permitted to read usage. Sign in again; if this persists, check your Claude account's usage access."
+                : "Not permitted to read usage (scopes: \(scopes.joined(separator: ", "))). Sign in again; if this persists, check your Claude account's usage access."
         case .noStoredToken:
-            "No saved sign-in found. Sign out and in again."
+            "No saved sign-in found. Sign in again."
         case .rateLimited:
             "Rate limited by Claude. Retrying automatically."
         case .http(let status):

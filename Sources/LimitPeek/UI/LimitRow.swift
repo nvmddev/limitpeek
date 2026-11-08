@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LimitRow: View {
     let row: UsageDisplay.Row
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -23,24 +24,39 @@ struct LimitRow: View {
                     .multilineTextAlignment(.trailing)
             }
 
-            GaugeBar(fraction: min(row.percent, 100) / 100, tint: tint)
+            GaugeBar(fraction: min(shownPercent, 100) / 100, tint: tint)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(row.title), \(Int(row.percent.rounded())) percent used")
+        .accessibilityLabel([row.title, spokenTrailingText, row.detail]
+            .compactMap { $0 }
+            .joined(separator: ", "))
+    }
+
+    /// One number for the gauge, the colour, and the visible text, so the row
+    /// cannot disagree with the menu bar about rounding or thresholds.
+    private var shownPercent: Double {
+        UsageDisplay.displayPercent(row.percent)
     }
 
     private var trailingText: String {
-        let percent = "\(Int(row.percent.rounded()))%"
+        let percent = UsageDisplay.percentText(shownPercent)
         guard let reset = ResetFormatter.string(for: row) else { return percent }
         return "\(percent) · resets \(reset)"
     }
 
+    /// The visual "100%+" is not useful spoken aloud; describe the real value.
+    private var spokenTrailingText: String {
+        let percent = UsageDisplay.percentDescription(row.percent)
+        guard let reset = ResetFormatter.string(for: row) else { return percent }
+        return "\(percent), resets \(reset)"
+    }
+
     private var tint: Color {
-        if row.percent >= MenuBarLabel.criticalThreshold { return Palette.critical }
-        if row.percent >= MenuBarLabel.warningThreshold { return Palette.warning }
+        if shownPercent >= MenuBarLabel.criticalThreshold { return Palette.critical(for: colorScheme) }
+        if shownPercent >= MenuBarLabel.warningThreshold { return Palette.warning(for: colorScheme) }
         return switch row.severity {
-        case .critical: Palette.critical
-        case .warning: Palette.warning
+        case .critical: Palette.critical(for: colorScheme)
+        case .warning: Palette.warning(for: colorScheme)
         case .normal: Palette.accent
         }
     }

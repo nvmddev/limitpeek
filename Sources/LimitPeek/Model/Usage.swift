@@ -15,6 +15,35 @@ struct UsageResponse: Decodable, Sendable {
     var sevenDaySonnet: RateWindow?
 
     var spend: Spend?
+
+    private enum CodingKeys: String, CodingKey {
+        case limits
+        case fiveHour
+        case sevenDay
+        case sevenDayOpus
+        case sevenDaySonnet
+        case spend
+    }
+
+    /// One unexpected bucket must not blank the whole response.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let entries = try? container.decodeIfPresent([Lossy<LimitEntry>].self, forKey: .limits)
+        limits = (entries ?? []).compactMap(\.value)
+        fiveHour = try? container.decodeIfPresent(RateWindow.self, forKey: .fiveHour)
+        sevenDay = try? container.decodeIfPresent(RateWindow.self, forKey: .sevenDay)
+        sevenDayOpus = try? container.decodeIfPresent(RateWindow.self, forKey: .sevenDayOpus)
+        sevenDaySonnet = try? container.decodeIfPresent(RateWindow.self, forKey: .sevenDaySonnet)
+        spend = try? container.decodeIfPresent(Spend.self, forKey: .spend)
+    }
+}
+
+private struct Lossy<Value: Decodable>: Decodable {
+    let value: Value?
+
+    init(from decoder: any Decoder) throws {
+        value = try? Value(from: decoder)
+    }
 }
 
 struct RateWindow: Decodable, Sendable {
