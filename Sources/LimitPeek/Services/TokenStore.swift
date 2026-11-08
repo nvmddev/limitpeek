@@ -27,14 +27,23 @@ enum KeychainError: Error, LocalizedError {
     }
 }
 
-enum TokenStore {
+/// Deliberately synchronous on the main actor: reads are cached by
+/// `AccountStore` and writes happen only at sign-in and token rotation. An
+/// actor would only pay off after a measured hitch, with an async protocol.
+protocol TokenStoring: Sendable {
+    func save(_ pair: TokenPair, for accountID: String) throws
+    func load(for accountID: String) throws -> TokenPair?
+    func delete(for accountID: String) throws
+}
+
+struct TokenStore: TokenStoring {
     static let service = "dev.nevermind.LimitPeek.oauth"
 
-    static func save(_ pair: TokenPair, for accountID: String) throws {
+    func save(_ pair: TokenPair, for accountID: String) throws {
         let data = try JSONEncoder().encode(pair)
 
         // Update in place so the item's ACL survives a rotation.
-        let updateStatus = withQuery(accountID) { query in
+        let updateStatus = Self.withQuery(accountID) { query in
             SecItemUpdate(query as CFDictionary, [kSecValueData: data] as CFDictionary)
         }
         if updateStatus == errSecSuccess { return }
@@ -42,7 +51,7 @@ enum TokenStore {
             throw KeychainError.status(updateStatus)
         }
 
-        let addStatus = withQuery(accountID) { query in
+        let addStatus = Self.withQuery(accountID) { query in
             var attributes = query
             attributes[kSecValueData] = data
             attributes[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
@@ -51,9 +60,9 @@ enum TokenStore {
         guard addStatus == errSecSuccess else { throw KeychainError.status(addStatus) }
     }
 
-    static func load(for accountID: String) throws -> TokenPair? {
+    func load(for accountID: String) throws -> TokenPair? {
         var result: CFTypeRef?
-        let status = withQuery(accountID) { query in
+        let status = Self.withQuery(accountID) { query in
             var lookup = query
             lookup[kSecReturnData] = true
             lookup[kSecMatchLimit] = kSecMatchLimitOne
@@ -66,8 +75,8 @@ enum TokenStore {
         return try JSONDecoder().decode(TokenPair.self, from: data)
     }
 
-    static func delete(for accountID: String) throws {
-        let status = withQuery(accountID) { SecItemDelete($0 as CFDictionary) }
+    func delete(for accountID: String) throws {
+        let status = Self.withQuery(accountID) { SecItemDelete($0 as CFDictionary) }
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainError.status(status)
         }

@@ -4,19 +4,44 @@ struct UsagePopover: View {
     @Environment(AccountStore.self) private var store
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(MenuBarStyle.defaultsKey) private var style = MenuBarStyle.both
+    @State private var isReauthenticating = false
     let refresher: Refresher
 
     var body: some View {
         Group {
             if store.isSignedIn {
-                signedIn
+                if isReauthenticating {
+                    // The browser is already open and the pending PKCE is in
+                    // the store, so only the paste step is left.
+                    SignInView(startsInCodeEntry: true,
+                               onCancel: {
+                                   store.cancelSignIn()
+                                   isReauthenticating = false
+                               },
+                               onRestart: {
+                                   beginReauthentication()
+                               })
+                } else {
+                    signedIn
+                }
             } else {
                 SignInView()
             }
         }
         .tint(Palette.accent)
         .background(Palette.background(for: colorScheme).ignoresSafeArea())
-        .onAppear { refresher.refreshIfStale() }
+        .onAppear {
+            refresher.refreshIfStale()
+            // A keychain cleanup left over from sign-out; best effort.
+            store.retryPendingTokenCleanup()
+        }
+        .onChange(of: store.needsReauthentication) { _, needsReauthentication in
+            // A successful reauthentication returns to the normal signed-in view.
+            if !needsReauthentication { isReauthenticating = false }
+        }
+        .onChange(of: store.isSignedIn) { _, isSignedIn in
+            if !isSignedIn { isReauthenticating = false }
+        }
     }
 
     private var signedIn: some View {
@@ -67,12 +92,17 @@ struct UsagePopover: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 14)
+        } else if store.lastError == nil {
+            Text("No usage data")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
         }
 
         if let error = store.lastError {
             Text(error)
                 .font(.system(size: 11))
-                .foregroundStyle(Palette.critical)
+                .foregroundStyle(Palette.critical(for: colorScheme))
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 14)
                 .padding(.top, 10)
@@ -81,10 +111,21 @@ struct UsagePopover: View {
 
     private var actions: some View {
         VStack(spacing: 0) {
-            MenuActionRow(title: "Refresh", trailing: freshnessText) {
-                Task { await store.refresh() }
+            if store.needsReauthentication {
+                MenuActionRow(title: "Sign in again",
+                              trailing: reauthenticationDetail) {
+                    beginReauthentication()
+                }
             }
-            .disabled(store.isRefreshing)
+
+            TimelineView(RefreshTimelineSchedule(deadline: store.rateLimit?.deadline)) { context in
+                MenuActionRow(title: "Refresh", trailing: freshnessText(now: context.date)) {
+                    Task { await store.refresh() }
+                }
+                .disabled(store.isRefreshing
+                          || isRateLimited(at: context.date)
+                          || store.needsReauthentication)
+            }
 
             MenuActionRow(title: "Usage settings…") {
                 NSWorkspace.shared.open(URL(string: "https://claude.ai/settings/usage")!)
@@ -102,12 +143,70 @@ struct UsagePopover: View {
         }
     }
 
-    private var freshnessText: String? {
+    private func isRateLimited(at date: Date) -> Bool {
+        guard let deadline = store.rateLimit?.deadline else { return false }
+        return date < deadline
+    }
+
+    private func freshnessText(now: Date) -> String? {
         if store.isRefreshing { return "Updating…" }
         if store.rateLimit != nil, let countdown = refresher.retryCountdown { return countdown }
         guard let fetchedAt = store.display?.fetchedAt else { return nil }
-        if Date().timeIntervalSince(fetchedAt) < 60 { return "Just updated" }
+        if now.timeIntervalSince(fetchedAt) < Refresher.popoverStaleAfter { return "Just updated" }
         return fetchedAt.formatted(.relative(presentation: .numeric, unitsStyle: .abbreviated))
+    }
+
+    private var reauthenticationDetail: String {
+        switch store.authIssue {
+        case .missingToken: return "No saved sign-in"
+        case .forbidden: return "Not permitted"
+        case .sessionExpired, nil: return "Session expired"
+        }
+    }
+
+    private func beginReauthentication() {
+        NSWorkspace.shared.open(store.beginSignIn())
+        isReauthenticating = true
+    }
+}
+
+/// One tick per second only in the final minute before a rate-limit deadline,
+/// when the retry countdown needs to move; 30 s earlier, after the deadline,
+/// and in low-frequency mode. A `Retry-After` can be an hour, and redrawing
+/// the whole row every second for that long is pure cost.
+///
+/// Not private: the cadence is pure and the tests can pin it.
+struct RefreshTimelineSchedule: TimelineSchedule {
+    var deadline: Date?
+
+    static func tickInterval(after date: Date,
+                             deadline: Date?,
+                             mode: TimelineScheduleMode) -> TimeInterval {
+        guard mode != .lowFrequency,
+              let deadline,
+              date < deadline,
+              deadline.timeIntervalSince(date) <= 60
+        else { return 30 }
+        return 1
+    }
+
+    func entries(from startDate: Date, mode: TimelineScheduleMode) -> Entries {
+        Entries(nextDate: startDate, deadline: deadline, mode: mode)
+    }
+
+    struct Entries: Sequence, IteratorProtocol {
+        var nextDate: Date
+        let deadline: Date?
+        let mode: TimelineScheduleMode
+
+        mutating func next() -> Date? {
+            let date = nextDate
+            nextDate = date.addingTimeInterval(
+                RefreshTimelineSchedule.tickInterval(after: date,
+                                                     deadline: deadline,
+                                                     mode: mode))
+            return date
+        }
     }
 }
 
@@ -148,8 +247,8 @@ struct MenuActionRow: View {
             .background {
                 RoundedRectangle(cornerRadius: 5)
                     .fill(isHovering && isEnabled
-                          ? AnyShapeStyle(Palette.accent.opacity(0.14))
-                          : AnyShapeStyle(.clear))
+                          ? Palette.accent.opacity(0.14)
+                          : .clear)
             }
             .contentShape(.rect)
         }
@@ -188,6 +287,7 @@ struct MenuBarStyleRow: View {
             HStack(spacing: 2) {
                 ForEach(MenuBarStyle.allCases) { option in
                     Segment(title: option.shortTitle,
+                            accessibilityTitle: option.accessibilityTitle,
                             isSelected: style == option) { style = option }
                 }
             }
@@ -203,6 +303,7 @@ struct MenuBarStyleRow: View {
 
     private struct Segment: View {
         let title: String
+        let accessibilityTitle: String
         let isSelected: Bool
         let action: () -> Void
 
@@ -226,10 +327,12 @@ struct MenuBarStyleRow: View {
             }
             .buttonStyle(.plain)
             .onHover { isHovering = $0 }
+            .accessibilityLabel(accessibilityTitle)
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
         }
 
         private var background: AnyShapeStyle {
-            if isSelected { return AnyShapeStyle(.tint) }
+            if isSelected { return AnyShapeStyle(Palette.selectionFill) }
             return isHovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear)
         }
     }
@@ -238,39 +341,95 @@ struct MenuBarStyleRow: View {
 /// Separate so the SMAppService status is read once per appearance, not on
 /// every redraw.
 struct LaunchAtLoginRow: View {
-    @State private var isEnabled = false
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var status: LaunchAtLoginStatus = .disabled
     @State private var isHovering = false
+    @State private var errorMessage: String?
 
     var body: some View {
-        Button {
-            let target = !isEnabled
-            do {
-                try LoginItem.setEnabled(target)
-                isEnabled = target
-            } catch {
-                isEnabled = LoginItem.isEnabled
+        VStack(alignment: .leading, spacing: 2) {
+            Button(action: toggle) {
+                HStack(spacing: 8) {
+                    Text("Launch at Login").font(.system(size: 13))
+                    Spacer(minLength: 8)
+                    Image(systemName: iconName)
+                        .foregroundStyle(iconStyle)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background {
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(isHovering ? Palette.accent.opacity(0.14) : .clear)
+                }
+                .contentShape(.rect)
             }
-        } label: {
-            HStack(spacing: 8) {
-                Text("Launch at Login").font(.system(size: 13))
-                Spacer(minLength: 8)
-                Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isEnabled ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+            .buttonStyle(.plain)
+            .padding(.horizontal, 6)
+            .onHover { isHovering = $0 }
+            .accessibilityValue(accessibilityValue)
+            .onAppear(perform: refreshStatus)
+            // Approval can change while the popover is open, and the popover
+            // itself does not get a scenePhase change when the app returns.
+            .onReceive(NotificationCenter.default.publisher(
+                for: NSApplication.didBecomeActiveNotification)) { _ in
+                refreshStatus()
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(isHovering
-                          ? AnyShapeStyle(Palette.accent.opacity(0.14))
-                          : AnyShapeStyle(.clear))
+
+            if status.needsApproval {
+                Button("Approve in System Settings") {
+                    LoginItem.openSystemSettings()
+                }
+                .buttonStyle(.link)
+                .padding(.horizontal, 16)
             }
-            .contentShape(.rect)
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Palette.critical(for: colorScheme))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
+            }
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 6)
-        .onHover { isHovering = $0 }
-        .onAppear { isEnabled = LoginItem.isEnabled }
+    }
+
+    private var iconName: String {
+        switch status {
+        case .enabled: "checkmark.circle.fill"
+        case .requiresApproval: "exclamationmark.circle.fill"
+        case .disabled, .unavailable: "circle"
+        }
+    }
+
+    private var iconStyle: AnyShapeStyle {
+        switch status {
+        case .enabled: AnyShapeStyle(.tint)
+        case .requiresApproval: AnyShapeStyle(Palette.warning(for: colorScheme))
+        case .disabled, .unavailable: AnyShapeStyle(.tertiary)
+        }
+    }
+
+    private var accessibilityValue: String {
+        switch status {
+        case .disabled: "Off"
+        case .enabled: "On"
+        case .requiresApproval: "On, awaiting approval"
+        case .unavailable: "Unavailable"
+        }
+    }
+
+    private func toggle() {
+        do {
+            try LoginItem.setEnabled(!status.isEnabled)
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        refreshStatus()
+    }
+
+    private func refreshStatus() {
+        status = LoginItem.status
     }
 }

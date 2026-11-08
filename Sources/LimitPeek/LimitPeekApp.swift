@@ -13,6 +13,9 @@ struct LimitPeekApp: App {
                 .environment(store)
         } label: {
             Image(nsImage: label.image)
+                .accessibilityLabel(store.isSignedIn
+                    ? MenuBarLabel.accessibilityDescription(percent: store.display?.sessionPercent)
+                    : "Claude usage: not signed in")
                 .onAppear {
                     refresher.start(store: store)
                     updateLabel()

@@ -11,8 +11,10 @@ struct UsageDisplay: Sendable, Equatable {
 
     struct Row: Identifiable, Sendable, Equatable {
         var id: String
+        /// Wire `kind`, kept explicitly so callers never have to parse `id`.
+        var kind: String
         var title: String
-        /// 0–100.
+        /// Usually 0–100; above that it is displayed as "100%+".
         var percent: Double
         var resetsAt: Date?
         var severity: Severity = .normal
@@ -30,12 +32,17 @@ extension UsageDisplay {
         var rows: [Row] = []
 
         if !response.limits.isEmpty {
-            rows = response.limits.map { entry in
-                Row(id: entry.kind + (entry.scope?.model?.displayName ?? ""),
-                    title: Self.title(for: entry),
-                    percent: entry.percent,
-                    resetsAt: entry.resetsAt,
-                    severity: entry.severity ?? .normal)
+            rows = response.limits.enumerated().map { index, entry in
+                // The array index is what keeps same-kind limits apart; the
+                // model name only makes the ID readable. The kind stays first
+                // so existing prefix checks keep working.
+                let modelSuffix = (entry.scope?.model).map { ":\($0.displayName)" } ?? ""
+                return Row(id: "\(entry.kind)#\(index)\(modelSuffix)",
+                           kind: entry.kind,
+                           title: Self.title(for: entry),
+                           percent: entry.percent,
+                           resetsAt: entry.resetsAt,
+                           severity: entry.severity ?? .normal)
             }
         } else {
             let named: [(String, String, RateWindow?)] = [
@@ -46,13 +53,15 @@ extension UsageDisplay {
             ]
             rows = named.compactMap { id, title, window in
                 guard let window, let utilization = window.utilization else { return nil }
-                return Row(id: id, title: title, percent: utilization, resetsAt: window.resetsAt)
+                return Row(id: id, kind: id, title: title,
+                           percent: utilization, resetsAt: window.resetsAt)
             }
         }
 
         // `spend` over `extra_usage`: exact money with a currency.
         if let spend = response.spend, spend.enabled != false, let percent = spend.percent {
             rows.append(Row(id: "credits",
+                            kind: "credits",
                             title: "Usage credits",
                             percent: percent,
                             resetsAt: Self.startOfNextMonth(after: fetchedAt, calendar: calendar),
@@ -62,8 +71,35 @@ extension UsageDisplay {
         }
 
         self.rows = rows
-        self.sessionPercent = rows.first(where: { $0.id.hasPrefix("session") })?.percent
+        self.sessionPercent = rows.first(where: { $0.kind == "session" })?.percent
             ?? response.fiveHour?.utilization
+    }
+
+    /// The one number every renderer uses: 0 for non-finite input, the 100.5
+    /// sentinel for "over the limit" (the gauge clamps it to full), and a
+    /// whole percentage otherwise. Rounding here rather than at each call site
+    /// keeps the row, the menu bar label, and the cache from disagreeing.
+    static func displayPercent(_ percent: Double) -> Double {
+        guard percent.isFinite else { return 0 }
+        if percent > 100 { return 100.5 }
+        return max(percent, 0).rounded()
+    }
+
+    /// Visual form for the menu bar and the popover row. The sentinel above
+    /// reads "100%+"; negatives clamp to zero. Accessibility uses the spoken
+    /// `percentDescription` instead.
+    static func percentText(_ percent: Double) -> String {
+        let display = displayPercent(percent)
+        if display > 100 { return "100%+" }
+        return "\(Int(display))%"
+    }
+
+    /// Spoken counterpart to `percentText`, keeping the existing
+    /// "42 percent" phrasing.
+    static func percentDescription(_ percent: Double) -> String {
+        let display = displayPercent(percent)
+        if display > 100 { return "over 100 percent" }
+        return "\(Int(display)) percent"
     }
 
     private static func title(for entry: LimitEntry) -> String {

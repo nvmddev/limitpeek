@@ -12,6 +12,8 @@ cask "limitpeek" do
   # MenuBarExtra and @Observable put the floor at macOS 14. A bare symbol
   # already means "this version or newer"; the ">= :sonoma" form is deprecated.
   depends_on macos: :sonoma
+  # Apple-silicon-only release: the app is built for arm64.
+  depends_on arch: :arm64
 
   app "LimitPeek.app"
 

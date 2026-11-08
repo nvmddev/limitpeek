@@ -4,9 +4,25 @@ import SwiftUI
 /// web view, so the app never sees a password.
 struct SignInView: View {
     @Environment(AccountStore.self) private var store
+    @Environment(\.colorScheme) private var colorScheme
     @State private var pastedCode = ""
-    @State private var didOpenBrowser = false
+    @State private var didOpenBrowser: Bool
     @FocusState private var codeFieldFocused: Bool
+    private let onCancel: (() -> Void)?
+    private let onRestart: (() -> Void)?
+
+    /// `startsInCodeEntry` is for a reauthentication, where the caller has
+    /// already opened the browser and kept the PKCE challenge in the store.
+    /// The ordinary first sign-in keeps the default and opens the browser
+    /// from its own button. `onRestart` adds the "Start over" link and is only
+    /// passed by the reauthentication flow.
+    init(startsInCodeEntry: Bool = false,
+         onCancel: (() -> Void)? = nil,
+         onRestart: (() -> Void)? = nil) {
+        _didOpenBrowser = State(initialValue: startsInCodeEntry)
+        self.onCancel = onCancel
+        self.onRestart = onRestart
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -29,15 +45,28 @@ struct SignInView: View {
 
                     HStack {
                         Button("Back") {
-                            didOpenBrowser = false
-                            pastedCode = ""
-                            store.cancelSignIn()
+                            if let onCancel {
+                                onCancel()
+                            } else {
+                                didOpenBrowser = false
+                                pastedCode = ""
+                                store.cancelSignIn()
+                            }
+                        }
+                        .disabled(store.isSigningIn)
+                        if let onRestart {
+                            Button("Start over") {
+                                pastedCode = ""
+                                onRestart()
+                            }
+                            .buttonStyle(.link)
+                            .disabled(store.isSigningIn)
                         }
                         Spacer()
                         Button("Continue", action: submit)
                             .keyboardShortcut(.defaultAction)
                             .disabled(pastedCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                      || store.isRefreshing)
+                                      || store.isSigningIn)
                     }
                 }
             } else {
@@ -56,8 +85,23 @@ struct SignInView: View {
             if let error = store.lastError {
                 Text(error)
                     .font(.caption)
-                    .foregroundStyle(Palette.critical)
+                    .foregroundStyle(Palette.critical(for: colorScheme))
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // Only while signed out: a reauthentication still owns the account,
+            // so the sign-out notice would be misleading there.
+            if !store.isSignedIn, let notice = store.tokenCleanupNotice {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(notice)
+                        .font(.caption)
+                        .foregroundStyle(Palette.warning(for: colorScheme))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Try Again") {
+                        store.retryPendingTokenCleanup()
+                    }
+                    .buttonStyle(.link)
+                }
             }
 
             Divider()
@@ -68,11 +112,17 @@ struct SignInView: View {
         }
         .padding(14)
         .frame(width: 280)
+        .onAppear {
+            // Reauthentication starts directly in the code-entry step.
+            if didOpenBrowser { codeFieldFocused = true }
+        }
     }
 
     private func submit() {
         let code = pastedCode
-        pastedCode = ""
+        guard !store.isSigningIn,
+              !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
         Task { await store.completeSignIn(pastedCode: code) }
     }
 }

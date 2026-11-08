@@ -61,8 +61,8 @@ eases back to the normal cadence once requests land again.
 
 ## Requirements
 
-macOS 14 (Sonoma) or newer. Universal binary, so Apple silicon and Intel both
-run natively.
+macOS 14 (Sonoma) or newer on Apple silicon (arm64). The release build is
+arm64-only.
 
 ## Privacy
 
@@ -81,13 +81,13 @@ own token.
 ## Build
 
 ```sh
-./build.sh          # release, universal → build/LimitPeek.app
+./build.sh          # release, Apple silicon → build/LimitPeek.app
 ./build.sh --debug  # host arch only, faster
 ./build.sh --run    # build and relaunch
 swift test
 ```
 
-Needs Xcode for universal builds and swift-testing; `build.sh` finds it even if
+Needs Xcode for swift-testing and the toolchain; `build.sh` finds it even if
 `xcode-select` still points at the Command Line Tools. Zero dependencies.
 
 The pictures above are drawn by the app's own views —
