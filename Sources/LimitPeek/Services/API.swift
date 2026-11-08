@@ -16,6 +16,10 @@ enum API {
         return URLSession(configuration: configuration)
     }
 
+    /// One session for the whole app: connection reuse without adding state
+    /// per client. Tests and previews can still call `makeSession()`.
+    static let shared = makeSession()
+
     static func makeDecoder() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -31,25 +35,43 @@ enum API {
         return decoder
     }
 
+    /// Foundation date formatters are documented thread-safe on macOS 10.9+,
+    /// and these are configured once at init and only read afterwards.
+    nonisolated(unsafe) private static let fractionalFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    nonisolated(unsafe) private static let plainFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    private static let httpDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "GMT")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        return formatter
+    }()
+
     /// The API returns microseconds, which ISO8601DateFormatter rejects.
     /// Truncate to milliseconds, then fall back to whole seconds.
     static func parseTimestamp(_ raw: String) -> Date? {
         var value = raw
-        if let dot = value.firstIndex(of: ".") {
-            let afterDot = value.index(after: dot)
-            let digits = value[afterDot...].prefix(while: \.isNumber)
-            if digits.count > 3 {
-                let keep = value.index(afterDot, offsetBy: 3)
-                value.removeSubrange(keep..<value.index(afterDot, offsetBy: digits.count))
+        if let dot = raw.firstIndex(of: ".") {
+            let afterDot = raw.index(after: dot)
+            let digitCount = raw[afterDot...].prefix(while: \.isNumber).count
+            if digitCount > 3 {
+                let keep = raw.index(afterDot, offsetBy: 3)
+                let dropEnd = raw.index(afterDot, offsetBy: digitCount)
+                value = String(raw[..<keep]) + String(raw[dropEnd...])
             }
         }
-        let withFraction = ISO8601DateFormatter()
-        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = withFraction.date(from: value) { return date }
-
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        return plain.date(from: value)
+        if let date = Self.fractionalFormatter.date(from: value) { return date }
+        return Self.plainFormatter.date(from: value)
     }
 
     /// `Retry-After` is either a count of seconds or an HTTP date. The endpoint
@@ -59,11 +81,7 @@ enum API {
         guard let raw = raw?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
         if let seconds = TimeInterval(raw) { return seconds >= 1 ? seconds : nil }
 
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "GMT")
-        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
-        guard let date = formatter.date(from: raw) else { return nil }
+        guard let date = Self.httpDateFormatter.date(from: raw) else { return nil }
         let seconds = date.timeIntervalSinceNow
         return seconds >= 1 ? seconds : nil
     }

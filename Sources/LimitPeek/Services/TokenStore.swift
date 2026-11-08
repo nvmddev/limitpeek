@@ -38,6 +38,9 @@ enum TokenStore {
             SecItemUpdate(query as CFDictionary, [kSecValueData: data] as CFDictionary)
         }
         if updateStatus == errSecSuccess { return }
+        guard updateStatus == errSecItemNotFound else {
+            throw KeychainError.status(updateStatus)
+        }
 
         let addStatus = withQuery(accountID) { query in
             var attributes = query

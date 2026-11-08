@@ -18,14 +18,12 @@ final class MenuBarLabelCache {
     private(set) var image = MenuBarLabel.image(percent: nil, style: .both)
     private var renderedKey: Key?
 
-    /// The observer outlives the cache, which lives as long as the app; it
-    /// holds self weakly, so an orphaned registration is a no-op.
+    /// Held for the life of the cache, which lives as long as the app, so the
+    /// observation survives; it holds self weakly.
+    private var appearanceObservation: NSKeyValueObservation?
+
     init() {
-        DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
+        appearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
             MainActor.assumeIsolated { self?.redraw() }
         }
     }

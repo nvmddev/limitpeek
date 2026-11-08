@@ -49,7 +49,7 @@ enum OAuthError: Error, LocalizedError {
 }
 
 struct OAuthService: Sendable {
-    var session: URLSession = API.makeSession()
+    var session: URLSession = API.shared
     var scopes: [String] = OAuth.scopes
 
     func authorizationURL(pkce: PKCE) -> URL {

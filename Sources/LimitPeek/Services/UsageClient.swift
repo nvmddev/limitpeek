@@ -2,7 +2,7 @@ import Foundation
 import os
 
 struct UsageClient: Sendable {
-    var session: URLSession = API.makeSession()
+    var session: URLSession = API.shared
 
     func fetchUsage(accessToken: String, scopes: [String] = []) async throws -> UsageResponse {
         try await get(API.usage, accessToken: accessToken, scopes: scopes)

@@ -32,6 +32,11 @@ final class AccountStore {
     private let defaults = UserDefaults.standard
     private let accountsKey = "accounts"
 
+    /// Global floor between request attempts: at most three per minute, however
+    /// often the popover opens or the button is clicked.
+    private static let minRefreshInterval: TimeInterval = 20
+    private var lastRefreshAt = Date.distantPast
+
     var selectedAccount: Account? {
         accounts.first { $0.id == selectedAccountID } ?? accounts.first
     }
@@ -81,7 +86,7 @@ final class AccountStore {
             saveAccounts()
             pendingPKCE = nil
 
-            await refresh()
+            await refresh(force: true)
         } catch {
             lastError = error.localizedDescription
         }
@@ -99,10 +104,13 @@ final class AccountStore {
 
     // MARK: - Refresh
 
-    func refresh() async {
+    func refresh(force: Bool = false) async {
         guard let account = selectedAccount else { return }
         guard !isRefreshing else { return }
+        guard force || Date().timeIntervalSince(lastRefreshAt) >= Self.minRefreshInterval else { return }
         isRefreshing = true
+        // Count failed attempts too: an error must not be hammered either.
+        lastRefreshAt = Date()
         defer { isRefreshing = false }
 
         do {
