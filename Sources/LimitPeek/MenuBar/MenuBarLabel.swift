@@ -79,8 +79,8 @@ enum MenuBarLabel {
     /// Nil means "template image, macOS picks the colour".
     private static func tint(for percent: Double?) -> Color? {
         guard let percent else { return nil }
-        if percent >= criticalThreshold { return .red }
-        if percent >= warningThreshold { return .orange }
+        if percent >= criticalThreshold { return Palette.critical }
+        if percent >= warningThreshold { return Palette.warning }
         return nil
     }
 
