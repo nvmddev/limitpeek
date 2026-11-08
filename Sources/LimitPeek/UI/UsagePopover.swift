@@ -2,6 +2,7 @@ import SwiftUI
 
 struct UsagePopover: View {
     @Environment(AccountStore.self) private var store
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage(MenuBarStyle.defaultsKey) private var style = MenuBarStyle.both
     let refresher: Refresher
 
@@ -13,6 +14,8 @@ struct UsagePopover: View {
                 SignInView()
             }
         }
+        .tint(Palette.accent)
+        .background(Palette.background(for: colorScheme).ignoresSafeArea())
         .onAppear { refresher.refreshIfStale() }
     }
 
@@ -69,7 +72,7 @@ struct UsagePopover: View {
         if let error = store.lastError {
             Text(error)
                 .font(.system(size: 11))
-                .foregroundStyle(.red)
+                .foregroundStyle(Palette.critical)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 14)
                 .padding(.top, 10)
@@ -144,11 +147,14 @@ struct MenuActionRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 RoundedRectangle(cornerRadius: 5)
-                    .fill(isHovering && isEnabled ? AnyShapeStyle(.selection) : AnyShapeStyle(.clear))
+                    .fill(isHovering && isEnabled
+                          ? AnyShapeStyle(Palette.accent.opacity(0.14))
+                          : AnyShapeStyle(.clear))
             }
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .focusEffectDisabled()
         .foregroundStyle(isEnabled ? .primary : .tertiary)
         .padding(.horizontal, 6)
         .onHover { isHovering = $0 }
@@ -256,7 +262,9 @@ struct LaunchAtLoginRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 RoundedRectangle(cornerRadius: 5)
-                    .fill(isHovering ? AnyShapeStyle(.selection) : AnyShapeStyle(.clear))
+                    .fill(isHovering
+                          ? AnyShapeStyle(Palette.accent.opacity(0.14))
+                          : AnyShapeStyle(.clear))
             }
             .contentShape(.rect)
         }

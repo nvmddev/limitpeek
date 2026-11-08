@@ -36,12 +36,12 @@ struct LimitRow: View {
     }
 
     private var tint: Color {
-        if row.percent >= MenuBarLabel.criticalThreshold { return .red }
-        if row.percent >= MenuBarLabel.warningThreshold { return .orange }
+        if row.percent >= MenuBarLabel.criticalThreshold { return Palette.critical }
+        if row.percent >= MenuBarLabel.warningThreshold { return Palette.warning }
         return switch row.severity {
-        case .critical: .red
-        case .warning: .orange
-        case .normal: .accentColor
+        case .critical: Palette.critical
+        case .warning: Palette.warning
+        case .normal: Palette.accent
         }
     }
 }
@@ -49,7 +49,7 @@ struct LimitRow: View {
 /// ProgressView won't hold this height and radius, so it is drawn by hand.
 struct GaugeBar: View {
     let fraction: Double
-    var tint: Color = .accentColor
+    var tint: Color = Palette.accent
 
     var body: some View {
         GeometryReader { geometry in

@@ -56,7 +56,7 @@ struct SignInView: View {
             if let error = store.lastError {
                 Text(error)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Palette.critical)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
