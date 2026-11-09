@@ -1,24 +1,32 @@
 import SwiftUI
 
-/// One usage limit: title and percentage, when it resets, and a capacity bar.
+/// One usage limit: its title, when it resets, and a capacity bar with the
+/// percentage right above it.
 struct LimitRow: View {
     let row: UsageDisplay.Row
 
     var body: some View {
+        let caption = details(spoken: false)
         VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if caption != nil {
                 Text(row.title)
+            }
+            // The percentage sits on whichever line is closest to the bar.
+            HStack(alignment: .lastTextBaseline, spacing: 8) {
+                if let caption {
+                    Text(caption)
+                        .font(.subheadline)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text(row.title)
+                }
                 Spacer(minLength: 8)
                 Text(UsageDisplay.percentText(row.percent))
                     .font(.subheadline)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
-            }
-            if let details = details(spoken: false) {
-                Text(details)
-                    .font(.subheadline)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
+                    .fixedSize()
             }
             // The sentinel for "over the limit" fills the bar.
             Gauge(value: min(UsageDisplay.displayPercent(row.percent), 100), in: 0...100) {
