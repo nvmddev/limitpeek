@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import LimitPeek
 
@@ -26,32 +27,40 @@ final class StubURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
-final class InMemoryTokenStore: TokenStoring, @unchecked Sendable {
-    private let lock = NSLock()
-    private var pairs: [String: TokenPair] = [:]
+final class InMemoryTokenStore: TokenStoring {
+    private let pairs = OSAllocatedUnfairLock<[String: TokenPair]>(initialState: [:])
 
     func save(_ pair: TokenPair, for accountID: String) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        pairs[accountID] = pair
+        pairs.withLock { $0[accountID] = pair }
     }
 
     func load(for accountID: String) throws -> TokenPair? {
-        lock.lock()
-        defer { lock.unlock() }
-        return pairs[accountID]
+        pairs.withLock { $0[accountID] }
     }
 
     func delete(for accountID: String) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        pairs[accountID] = nil
+        pairs.withLock { $0[accountID] = nil }
     }
 
     var count: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return pairs.count
+        pairs.withLock { $0.count }
+    }
+}
+
+/// Counts calls from URL loading threads.
+final class LockedCounter: Sendable {
+    private let value = OSAllocatedUnfairLock(initialState: 0)
+
+    @discardableResult
+    func increment() -> Int {
+        value.withLock { value in
+            value += 1
+            return value
+        }
+    }
+
+    var current: Int {
+        value.withLock { $0 }
     }
 }
 

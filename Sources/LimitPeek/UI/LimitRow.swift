@@ -1,65 +1,46 @@
 import SwiftUI
 
+/// One usage limit: title and percentage, when it resets, and a capacity bar.
 struct LimitRow: View {
     let row: UsageDisplay.Row
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(row.title)
                 Spacer(minLength: 8)
-                Text(trailingText)
+                Text(UsageDisplay.percentText(row.percent))
                     .font(.subheadline)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.trailing)
             }
-            if let detail = row.detail {
-                Text(detail)
+            if let details = details(spoken: false) {
+                Text(details)
                     .font(.subheadline)
+                    .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
-            Gauge(value: min(shownPercent, 100), in: 0...100) {
+            // The sentinel for "over the limit" fills the bar.
+            Gauge(value: min(UsageDisplay.displayPercent(row.percent), 100), in: 0...100) {
                 Text(row.title)
             }
             .gaugeStyle(CapacityBarStyle())
-            .tint(tint)
+            .tint(Palette.color(for: row.level))
             .padding(.top, 5)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel([row.title, spokenTrailingText, row.detail]
+        .accessibilityLabel([row.title, UsageDisplay.percentDescription(row.percent), details(spoken: true)]
             .compactMap { $0 }
             .joined(separator: ", "))
     }
 
-    /// One number for the gauge, the colour, and the visible text, so the row
-    /// cannot disagree with the menu bar about rounding or thresholds.
-    private var shownPercent: Double {
-        UsageDisplay.displayPercent(row.percent)
-    }
-
-    private var trailingText: String {
-        let percent = UsageDisplay.percentText(shownPercent)
-        guard let reset = ResetFormatter.string(for: row) else { return percent }
-        return "\(percent) · resets \(reset)"
-    }
-
-    /// The visual "100%+" is not useful spoken aloud; describe the real value.
-    private var spokenTrailingText: String {
-        let percent = UsageDisplay.percentDescription(row.percent)
-        guard let reset = ResetFormatter.string(for: row) else { return percent }
-        return "\(percent), resets \(reset)"
-    }
-
-    private var tint: Color {
-        if shownPercent >= MenuBarLabel.criticalThreshold { return Palette.critical(for: colorScheme) }
-        if shownPercent >= MenuBarLabel.warningThreshold { return Palette.warning(for: colorScheme) }
-        return switch row.severity {
-        case .critical: Palette.critical(for: colorScheme)
-        case .warning: Palette.warning(for: colorScheme)
-        case .normal: Palette.accent(for: colorScheme)
-        }
+    /// "$3.00 of $15.00 · resets Dec 1", or either half alone.
+    private func details(spoken: Bool) -> String? {
+        let reset = ResetFormatter.string(for: row, spoken: spoken).map { "resets \($0)" }
+        let parts = [row.detail, reset].compactMap { $0 }
+        guard !parts.isEmpty else { return nil }
+        let text = parts.joined(separator: spoken ? ", " : " · ")
+        return text.prefix(1).uppercased() + text.dropFirst()
     }
 }
 
@@ -83,15 +64,31 @@ struct CapacityBarStyle: GaugeStyle {
     }
 }
 
+/// When a limit resets: the clock time and what is left within a day, the
+/// weekday and time within a week, and the date beyond that or for credits,
+/// which reset on a calendar boundary.
 enum ResetFormatter {
-    static func string(for row: UsageDisplay.Row, now: Date = Date()) -> String? {
+    static func string(for row: UsageDisplay.Row,
+                       now: Date = .now,
+                       spoken: Bool = false,
+                       locale: Locale = .autoupdatingCurrent) -> String? {
         guard let resetsAt = row.resetsAt else { return nil }
-        let interval = resetsAt.timeIntervalSince(now)
-        guard interval > 0 else { return nil }
+        let remaining = resetsAt.timeIntervalSince(now)
+        guard remaining > 0 else { return nil }
 
-        if row.resetIsCalendarDate || interval > 7 * 24 * 3600 {
-            return resetsAt.formatted(.dateTime.day().month(.abbreviated))
+        if row.resetIsCalendarDate || remaining > 7 * 86_400 {
+            return resetsAt.formatted(.dateTime.day().month(.abbreviated).locale(locale))
         }
-        return resetsAt.formatted(.relative(presentation: .numeric, unitsStyle: .abbreviated))
+        if remaining > 86_400 {
+            return resetsAt.formatted(.dateTime.weekday(.abbreviated).hour().minute().locale(locale))
+        }
+        let time = resetsAt.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: locale))
+        // Rounded up, so the clock in the menu bar plus this lands on `time`.
+        let left = Duration.seconds(remaining).formatted(
+            .units(allowed: [.hours, .minutes],
+                   width: spoken ? .wide : .narrow,
+                   fractionalPart: .hide(rounded: .up))
+            .locale(locale))
+        return spoken ? "at \(time), in \(left)" : "at \(time) (\(left))"
     }
 }

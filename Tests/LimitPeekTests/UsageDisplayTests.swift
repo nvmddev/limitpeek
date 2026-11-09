@@ -152,6 +152,37 @@ struct UsageDisplayTests {
                 == "Claude usage: 0 percent of the 5-hour limit")
     }
 
+    // MARK: - Thresholds
+
+    @Test func percentCrossesIntoWarningAndCriticalOnTheShownValue() {
+        #expect(Severity(percent: 79.4) == .normal)
+        #expect(Severity(percent: 79.6) == .warning)
+        #expect(Severity(percent: 94.4) == .warning)
+        #expect(Severity(percent: 94.5) == .critical)
+        #expect(Severity(percent: 150) == .critical)
+        #expect(Severity(percent: .nan) == .normal)
+    }
+
+    @Test func rowLevelLetsThePercentageDecideAboveAThreshold() {
+        var row = UsageDisplay.Row(id: "session", kind: "session", title: "5-hour limit", percent: 20)
+        #expect(row.level == .normal)
+
+        row.severity = .critical
+        #expect(row.level == .critical)
+
+        row.percent = 85
+        #expect(row.level == .warning)
+
+        row.percent = 97
+        row.severity = .normal
+        #expect(row.level == .critical)
+    }
+
+    @Test func signedOutLabelSaysSo() {
+        #expect(MenuBarLabel.accessibilityDescription(percent: nil, isSignedIn: false)
+                == "Claude usage: not signed in")
+    }
+
     // MARK: - Helpers
 
     private func display(_ json: String) throws -> UsageDisplay {
