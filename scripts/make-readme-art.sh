@@ -1,9 +1,9 @@
 #!/bin/bash
 #
 # Renders the README pictures into docs/ from scripts/ReadmeArt.swift. Run it
-# after changing the menu bar label, the popover or the icon, and commit what
-# it writes. The popover is captured on screen, so the terminal needs Screen
-# Recording permission, and a window flashes up briefly per appearance.
+# after changing the menu bar label, the menu or the icon, and commit what it
+# writes. The menu is captured on screen, so the terminal needs Screen
+# Recording permission, and it flashes up briefly per appearance.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -26,8 +26,9 @@ echo "==> compiling the renderer"
 xcrun swiftc -DDEBUG -swift-version 6 -O \
 	"${SOURCES[@]}" "$WORK/main.swift" -o "$WORK/readme-art"
 
-echo "==> rendering docs/"
-"$WORK/readme-art"
+OUT="${1:-docs}"
+echo "==> rendering ${OUT}/"
+"$WORK/readme-art" "$OUT"
 
-swift scripts/IconRenderer.swift 256 docs/icon.png
-echo "  docs/icon.png"
+swift scripts/IconRenderer.swift 256 "$OUT/icon.png"
+echo "  ${OUT}/icon.png"

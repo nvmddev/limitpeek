@@ -22,7 +22,7 @@ struct AppGlyph: Shape {
         return Self.design.applying(fit)
     }
 
-    private static var design: Path {
+    private static let design: Path = {
         var path = Path()
 
         // Head, cut flat where the ledge crosses it — the peeking trick.
@@ -46,7 +46,7 @@ struct AppGlyph: Shape {
             eyes.addEllipse(in: CGRect(x: eyeX - 54, y: 410, width: 108, height: 108))
         }
         return path.subtracting(eyes)
-    }
+    }()
 
     private static func roundedTop(_ rect: CGRect, radius: Double) -> Path {
         Path { path in

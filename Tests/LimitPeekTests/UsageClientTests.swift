@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import LimitPeek
 
@@ -208,20 +209,15 @@ private final class UsageStubURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
-private final class UsageRequestRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var stored: URLRequest?
+private final class UsageRequestRecorder: Sendable {
+    private let stored = OSAllocatedUnfairLock<URLRequest?>(initialState: nil)
 
     func record(_ request: URLRequest) {
-        lock.lock()
-        defer { lock.unlock() }
-        stored = request
+        stored.withLock { $0 = request }
     }
 
     var request: URLRequest? {
-        lock.lock()
-        defer { lock.unlock() }
-        return stored
+        stored.withLock { $0 }
     }
 }
 

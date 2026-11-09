@@ -1,17 +1,28 @@
+import Foundation
 import Testing
 @testable import LimitPeek
 
 struct OAuthServiceTests {
     @Test func parsesCodeWithMatchingState() throws {
-        let callback = try OAuthService.parseCallback(" code#state \n", expectedState: "state")
-        #expect(callback.code == "code")
-        #expect(callback.state == "state")
+        #expect(try OAuthService.parseCallback(" code#state \n", expectedState: "state") == "code")
     }
 
     @Test func acceptsBareCode() throws {
-        let callback = try OAuthService.parseCallback("code", expectedState: "state")
-        #expect(callback.code == "code")
-        #expect(callback.state == "state")
+        #expect(try OAuthService.parseCallback("code", expectedState: "state") == "code")
+    }
+
+    @Test func authorizationURLCarriesTheChallengeAndState() throws {
+        let pkce = PKCE()
+        let url = OAuthService().authorizationURL(pkce: pkce)
+        let items = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        let query = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value) })
+
+        #expect(url.host() == "claude.com")
+        #expect(query["code_challenge"] == pkce.challenge)
+        #expect(query["code_challenge_method"] == "S256")
+        #expect(query["state"] == pkce.state)
+        #expect(query["scope"] == "user:profile")
+        #expect(query["redirect_uri"] == OAuth.redirectURI)
     }
 
     @Test func rejectsMismatchedState() {

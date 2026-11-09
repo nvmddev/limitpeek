@@ -53,8 +53,7 @@ struct OAuthService: Sendable {
     var scopes: [String] = OAuth.scopes
 
     func authorizationURL(pkce: PKCE) -> URL {
-        var components = URLComponents(url: OAuth.authorizeURL, resolvingAgainstBaseURL: false)!
-        components.queryItems = [
+        OAuth.authorizeURL.appending(queryItems: [
             .init(name: "code", value: "true"),
             .init(name: "client_id", value: OAuth.clientID),
             .init(name: "response_type", value: "code"),
@@ -63,36 +62,28 @@ struct OAuthService: Sendable {
             .init(name: "code_challenge", value: pkce.challenge),
             .init(name: "code_challenge_method", value: "S256"),
             .init(name: "state", value: pkce.state)
-        ]
-        return components.url!
+        ])
     }
 
-    /// The callback page shows `code#state`; accept that or a bare code.
     func exchange(pastedCode: String, pkce: PKCE) async throws -> TokenPair {
-        let callback = try Self.parseCallback(pastedCode, expectedState: pkce.state)
-
+        let code = try Self.parseCallback(pastedCode, expectedState: pkce.state)
         return try await requestToken(body: [
             "grant_type": "authorization_code",
-            "code": callback.code,
+            "code": code,
             "redirect_uri": OAuth.redirectURI,
             "client_id": OAuth.clientID,
             "code_verifier": pkce.verifier,
-            "state": callback.state
+            "state": pkce.state
         ], fallbackRefreshToken: nil)
     }
 
-    static func parseCallback(_ pastedCode: String,
-                              expectedState: String) throws -> (code: String, state: String) {
-        let trimmed = pastedCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { throw OAuthError.malformedCode }
-
-        let parts = trimmed.split(separator: "#", maxSplits: 1)
-        let code = String(parts[0])
-        guard !code.isEmpty else { throw OAuthError.malformedCode }
-        if parts.count > 1, String(parts[1]) != expectedState {
-            throw OAuthError.stateMismatch
-        }
-        return (code, expectedState)
+    /// The callback page shows `code#state`; accept that or a bare code.
+    static func parseCallback(_ pastedCode: String, expectedState: String) throws -> String {
+        let parts = pastedCode.trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: "#", maxSplits: 1)
+        guard let code = parts.first else { throw OAuthError.malformedCode }
+        if parts.count > 1, parts[1] != expectedState { throw OAuthError.stateMismatch }
+        return String(code)
     }
 
     func refresh(_ pair: TokenPair) async throws -> TokenPair {
@@ -123,14 +114,12 @@ struct OAuthService: Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.malformedResponse }
 
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-
+        let decoder = API.makeDecoder()
         guard (200..<300).contains(http.statusCode) else {
             let failure = try? decoder.decode(ErrorResponse.self, from: data)
             if failure?.error == "invalid_grant" { throw OAuthError.invalidGrant }
@@ -153,7 +142,7 @@ struct OAuthService: Sendable {
         return TokenPair(
             accessToken: token.accessToken,
             refreshToken: refreshToken,
-            expiresAt: Date().addingTimeInterval(token.expiresIn ?? 3600),
+            expiresAt: .now.addingTimeInterval(token.expiresIn ?? 3600),
             scopes: token.scope?.split(separator: " ").map(String.init) ?? scopes
         )
     }

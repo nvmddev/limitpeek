@@ -23,9 +23,6 @@ enum LaunchAtLoginStatus: Equatable, Sendable {
     var isEnabled: Bool { self == .enabled || self == .requiresApproval }
 
     var needsApproval: Bool { self == .requiresApproval }
-
-    /// Whether the app will actually launch at login right now.
-    var isEffective: Bool { self == .enabled }
 }
 
 /// Launch-at-login via SMAppService, so there is no helper bundle to install.

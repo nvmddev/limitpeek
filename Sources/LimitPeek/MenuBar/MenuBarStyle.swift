@@ -1,31 +1,26 @@
+import Foundation
+
 /// What the menu bar item shows: the gauge, the percentage, or both.
-enum MenuBarStyle: String, CaseIterable, Identifiable {
+enum MenuBarStyle: String, CaseIterable, Sendable {
     case both
     case bar
     case percentage
 
-    /// Read by the popover and by the label renderer, so the string lives in
-    /// one place.
-    static let defaultsKey = "menuBarStyle"
-
-    var id: Self { self }
     var showsBar: Bool { self != .percentage }
     var showsPercentage: Bool { self != .bar }
 
-    /// Short enough for three segments inside the popover's width.
-    var shortTitle: String {
+    var title: String {
         switch self {
-        case .both: "Bar + %"
-        case .bar: "Bar"
-        case .percentage: "%"
+        case .both: "Bar and Percentage"
+        case .bar: "Bar Only"
+        case .percentage: "Percentage Only"
         }
     }
 
-    var accessibilityTitle: String {
-        switch self {
-        case .both: "Bar and percentage"
-        case .bar: "Bar only"
-        case .percentage: "Percentage only"
-        }
+    private static let defaultsKey = "menuBarStyle"
+
+    static var saved: MenuBarStyle {
+        get { UserDefaults.standard.string(forKey: defaultsKey).flatMap(MenuBarStyle.init) ?? .both }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: defaultsKey) }
     }
 }
