@@ -28,8 +28,8 @@ struct UsagePopover: View {
                 SignInView()
             }
         }
-        .tint(Palette.accent)
-        .background(Palette.background(for: colorScheme).ignoresSafeArea())
+        .tint(Palette.accent(for: colorScheme))
+        .panelBackground()
         .onAppear {
             refresher.refreshIfStale()
             // A keychain cleanup left over from sign-out; best effort.
@@ -46,73 +46,50 @@ struct UsagePopover: View {
 
     private var signedIn: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
+            PanelHeader(title: "Usage Limits", subtitle: store.selectedAccount?.subtitle)
             limits
-            Divider().padding(.vertical, 6)
+                .padding(.top, 12)
+                .padding(.bottom, 4)
+            PanelSeparator()
             actions
         }
-        .padding(.vertical, 8)
-        .frame(width: 300)
+        .padding(.top, 12)
+        .padding(.bottom, PanelMetrics.highlightInset)
+        .frame(width: PanelMetrics.width)
     }
 
-    private var header: some View {
-        HStack(alignment: .center, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Your usage limits")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                if let account = store.selectedAccount {
-                    Text(account.subtitle)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer(minLength: 8)
-            AppGlyph()
-                .fill(.secondary)
-                .frame(width: 20, height: 20 / AppGlyph.aspectRatio)
-                .offset(y: -3)
-        }
-        .padding(.horizontal, 14)
-        .padding(.bottom, 10)
-    }
-
-    @ViewBuilder
     private var limits: some View {
-        if let display = store.display, !display.rows.isEmpty {
-            VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
+            if let display = store.display, !display.rows.isEmpty {
                 ForEach(display.rows) { row in
                     LimitRow(row: row)
                 }
+            } else if store.isRefreshing {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Loading…")
+                }
+                .foregroundStyle(.secondary)
+            } else if store.lastError == nil {
+                Text("No usage data")
+                    .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 14)
-        } else if store.isRefreshing {
-            Text("Loading…")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 14)
-        } else if store.lastError == nil {
-            Text("No usage data")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 14)
-        }
 
-        if let error = store.lastError {
-            Text(error)
-                .font(.system(size: 11))
-                .foregroundStyle(Palette.critical(for: colorScheme))
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
+            if let error = store.lastError {
+                Text(error)
+                    .font(.subheadline)
+                    .foregroundStyle(Palette.critical(for: colorScheme))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+        .padding(.horizontal, PanelMetrics.margin)
     }
 
     private var actions: some View {
         VStack(spacing: 0) {
             if store.needsReauthentication {
-                MenuActionRow(title: "Sign in again",
+                MenuActionRow(title: "Sign In Again…",
                               trailing: reauthenticationDetail) {
                     beginReauthentication()
                 }
@@ -127,17 +104,19 @@ struct UsagePopover: View {
                           || store.needsReauthentication)
             }
 
-            MenuActionRow(title: "Usage settings…") {
+            MenuActionRow(title: "Usage Settings…") {
                 NSWorkspace.shared.open(URL(string: "https://claude.ai/settings/usage")!)
             }
 
-            Divider().padding(.vertical, 6).padding(.horizontal, 8)
+            PanelSeparator()
 
             MenuBarStyleRow(style: $style)
             LaunchAtLoginRow()
 
+            PanelSeparator()
+
             MenuActionRow(title: "Sign Out") { store.signOut() }
-            MenuActionRow(title: "Quit", shortcut: "q") {
+            MenuActionRow(title: "Quit LimitPeek", shortcut: "q") {
                 NSApplication.shared.terminate(nil)
             }
         }
@@ -210,131 +189,53 @@ struct RefreshTimelineSchedule: TimelineSchedule {
     }
 }
 
-/// A row styled like a menu item: full-width hover highlight, no button chrome.
-struct MenuActionRow: View {
-    let title: String
-    var trailing: String?
-    var shortcut: Character?
-    let action: () -> Void
-
-    @State private var isHovering = false
-    @Environment(\.isEnabled) private var isEnabled
-
-    init(title: String,
-         trailing: String? = nil,
-         shortcut: Character? = nil,
-         action: @escaping () -> Void) {
-        self.title = title
-        self.trailing = trailing
-        self.shortcut = shortcut
-        self.action = action
-    }
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Text(title).font(.system(size: 13))
-                Spacer(minLength: 8)
-                if let trailing {
-                    Text(trailing)
-                        .font(.system(size: 11))
-                        .foregroundStyle(isHovering ? .primary : .secondary)
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(isHovering && isEnabled
-                          ? Palette.accent.opacity(0.14)
-                          : .clear)
-            }
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .focusEffectDisabled()
-        .foregroundStyle(isEnabled ? .primary : .tertiary)
-        .padding(.horizontal, 6)
-        .onHover { isHovering = $0 }
-        .modifier(OptionalShortcut(key: shortcut))
-    }
-}
-
-private struct OptionalShortcut: ViewModifier {
-    let key: Character?
-
-    func body(content: Content) -> some View {
-        if let key {
-            content.keyboardShortcut(KeyEquivalent(key))
-        } else {
-            content
-        }
-    }
-}
-
 /// Picks what the menu bar item shows. One segmented row rather than a menu
 /// row per choice, which would outweigh everything above it. Drawn by hand
-/// because ImageRenderer cannot draw an AppKit-backed Picker, and
-/// `scripts/ReadmeArt.swift` renders this view for the README.
+/// instead of a segmented `Picker`: AppKit paints the selected segment gray
+/// whenever the panel is not key, so the accent would come and go.
 struct MenuBarStyleRow: View {
     @Binding var style: MenuBarStyle
+    @Namespace private var thumb
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text("Menu Bar").font(.system(size: 13))
-            Spacer(minLength: 8)
-            HStack(spacing: 2) {
+        PanelRow(title: "Menu Bar", alignment: .center) {
+            HStack(spacing: 0) {
                 ForEach(MenuBarStyle.allCases) { option in
-                    Segment(title: option.shortTitle,
-                            accessibilityTitle: option.accessibilityTitle,
-                            isSelected: style == option) { style = option }
+                    segment(option)
                 }
             }
             .padding(2)
-            .background {
-                RoundedRectangle(cornerRadius: 7).fill(.quaternary.opacity(0.4))
-            }
-            .fixedSize()
+            .background(Capsule().fill(.quaternary))
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Menu Bar")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 3)
     }
 
-    private struct Segment: View {
-        let title: String
-        let accessibilityTitle: String
-        let isSelected: Bool
-        let action: () -> Void
-
-        @State private var isHovering = false
-
-        var body: some View {
-            Button(action: action) {
-                Text(title)
-                    .font(.system(size: 13))
-                    .lineLimit(1)
-                    .foregroundStyle(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    // Even segments, whatever the words are.
-                    .frame(minWidth: 46)
-                    .background {
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(background)
+    private func segment(_ option: MenuBarStyle) -> some View {
+        let isSelected = option == style
+        return Button {
+            withAnimation(.snappy(duration: 0.25)) { style = option }
+        } label: {
+            Text(option.shortTitle)
+                .font(.subheadline.weight(isSelected ? .medium : .regular))
+                .foregroundStyle(isSelected
+                                 ? AnyShapeStyle(Palette.onAccent(for: colorScheme))
+                                 : AnyShapeStyle(.secondary))
+                .frame(width: 54, height: 18)
+                .background {
+                    if isSelected {
+                        Capsule()
+                            .fill(.tint)
+                            .matchedGeometryEffect(id: "thumb", in: thumb)
                     }
-                    .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            .onHover { isHovering = $0 }
-            .accessibilityLabel(accessibilityTitle)
-            .accessibilityAddTraits(isSelected ? .isSelected : [])
+                }
+                .contentShape(Capsule())
         }
-
-        private var background: AnyShapeStyle {
-            if isSelected { return AnyShapeStyle(Palette.selectionFill) }
-            return isHovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear)
-        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .accessibilityLabel(option.accessibilityTitle)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -343,31 +244,17 @@ struct MenuBarStyleRow: View {
 struct LaunchAtLoginRow: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var status: LaunchAtLoginStatus = .disabled
-    @State private var isHovering = false
     @State private var errorMessage: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Button(action: toggle) {
-                HStack(spacing: 8) {
-                    Text("Launch at Login").font(.system(size: 13))
-                    Spacer(minLength: 8)
-                    Image(systemName: iconName)
-                        .foregroundStyle(iconStyle)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background {
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(isHovering ? Palette.accent.opacity(0.14) : .clear)
-                }
-                .contentShape(.rect)
+            PanelRow(title: "Launch at Login", alignment: .center) {
+                Toggle("Launch at Login", isOn: isEnabled)
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .labelsHidden()
+                    .disabled(status == .unavailable)
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 6)
-            .onHover { isHovering = $0 }
-            .accessibilityValue(accessibilityValue)
             .onAppear(perform: refreshStatus)
             // Approval can change while the popover is open, and the popover
             // itself does not get a scenePhase change when the app returns.
@@ -377,51 +264,33 @@ struct LaunchAtLoginRow: View {
             }
 
             if status.needsApproval {
-                Button("Approve in System Settings") {
+                Button("Approve in System Settings…") {
                     LoginItem.openSystemSettings()
                 }
                 .buttonStyle(.link)
-                .padding(.horizontal, 16)
+                .font(.subheadline)
+                .padding(.horizontal, PanelMetrics.margin)
+                .padding(.bottom, 4)
             }
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.system(size: 10))
+                    .font(.subheadline)
                     .foregroundStyle(Palette.critical(for: colorScheme))
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, PanelMetrics.margin)
+                    .padding(.bottom, 4)
             }
         }
     }
 
-    private var iconName: String {
-        switch status {
-        case .enabled: "checkmark.circle.fill"
-        case .requiresApproval: "exclamationmark.circle.fill"
-        case .disabled, .unavailable: "circle"
-        }
+    private var isEnabled: Binding<Bool> {
+        Binding(get: { status.isEnabled }, set: setEnabled)
     }
 
-    private var iconStyle: AnyShapeStyle {
-        switch status {
-        case .enabled: AnyShapeStyle(.tint)
-        case .requiresApproval: AnyShapeStyle(Palette.warning(for: colorScheme))
-        case .disabled, .unavailable: AnyShapeStyle(.tertiary)
-        }
-    }
-
-    private var accessibilityValue: String {
-        switch status {
-        case .disabled: "Off"
-        case .enabled: "On"
-        case .requiresApproval: "On, awaiting approval"
-        case .unavailable: "Unavailable"
-        }
-    }
-
-    private func toggle() {
+    private func setEnabled(_ enabled: Bool) {
         do {
-            try LoginItem.setEnabled(!status.isEnabled)
+            try LoginItem.setEnabled(enabled)
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
