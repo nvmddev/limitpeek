@@ -36,28 +36,32 @@ brew install --cask nvmddev/tap/limitpeek
 Or grab the `.dmg` from the [latest release](https://github.com/nvmddev/limitpeek/releases/latest)
 and drag **LimitPeek.app** into `/Applications`.
 
-Sign in once from the menu bar item: it opens claude.com in your browser and you
-paste the code back.
+Sign in once from the menu bar item: it opens claude.com in your browser, and you
+paste the code it shows into LimitPeek's sign-in window.
 
 ## What it shows
 
 - The 5-hour limit, in the menu bar. Amber at 80%, red at 95%.
-- Weekly limits and usage credits in the popover, including per-model weekly
+- Weekly limits and usage credits in a native menu, including per-model weekly
   buckets when your plan has them.
+- When each limit resets, to the minute: "Resets at 14:00 (1h 15m)" within a
+  day, the weekday and time within a week.
 - Bar and percentage in the menu bar, or only one of the two.
 - Launch at login, if you want it.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/popover-dark.png">
-  <img src="docs/popover-light.png" width="366"
-       alt="The popover: the 5-hour limit, the weekly limit and usage credits, each with a bar and a reset time">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/menu-dark.png">
+  <img src="docs/menu-light.png" width="470"
+       alt="The menu: the 5-hour limit, the weekly limit and usage credits, each with a bar and when it resets">
 </picture>
 
 <sub>Sample account; the numbers are the response the tests pin.</sub>
 
-It polls every three minutes, stops while the machine is asleep, and stretches to
-five minutes in Low Power Mode. If the server rate-limits it, it backs off and
-eases back to the normal cadence once requests land again.
+It polls every three minutes, counted from the last request, so opening the
+menu or pressing Refresh does not add an extra one. It stops while the Mac or its
+display sleeps and stretches to five minutes in Low Power Mode. If the server
+rate-limits it, it backs off and eases back to the normal cadence once requests
+land again.
 
 ## Requirements
 
@@ -92,7 +96,7 @@ Needs Xcode for swift-testing and the toolchain; `build.sh` finds it even if
 
 The pictures above are drawn by the app's own views —
 `scripts/make-readme-art.sh` re-renders them into `docs/` after a change to the
-menu bar label, the popover or the icon.
+menu bar label, the menu or the icon.
 
 Signing, notarisation and the Keychain permission prompt are covered in
 [docs/signing.md](docs/signing.md).
@@ -102,7 +106,7 @@ Signing, notarisation and the Keychain permission prompt are covered in
 `GET https://api.anthropic.com/api/oauth/usage`, with an OAuth bearer token,
 plus `/api/oauth/profile` once at sign-in for the name in the header. `Tests/`
 pins the parts of the response the app relies on, so a change to the API shows
-up as a failing test rather than an empty popover.
+up as a failing test rather than an empty menu.
 
 ## License
 

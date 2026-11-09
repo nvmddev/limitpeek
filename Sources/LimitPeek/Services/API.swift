@@ -113,9 +113,8 @@ enum APIError: Error, LocalizedError {
         case .unauthorized:
             "Sign-in expired."
         case .forbidden(let scopes):
-            scopes.isEmpty
-                ? "Not permitted to read usage. Sign in again; if this persists, check your Claude account's usage access."
-                : "Not permitted to read usage (scopes: \(scopes.joined(separator: ", "))). Sign in again; if this persists, check your Claude account's usage access."
+            "Not permitted to read usage\(Self.scopeList(scopes)). "
+                + "Sign in again; if this persists, check your Claude account's usage access."
         case .noStoredToken:
             "No saved sign-in found. Sign in again."
         case .rateLimited:
@@ -125,5 +124,9 @@ enum APIError: Error, LocalizedError {
         case .malformedResponse:
             "Unexpected response from Claude."
         }
+    }
+
+    private static func scopeList(_ scopes: [String]) -> String {
+        scopes.isEmpty ? "" : " (scopes: \(scopes.joined(separator: ", ")))"
     }
 }

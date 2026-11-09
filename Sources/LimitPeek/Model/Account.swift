@@ -1,8 +1,8 @@
 import Foundation
 
-/// One signed-in Claude account, stored without its token in UserDefaults.
+/// The signed-in Claude account, stored without its token in UserDefaults.
 /// The token pair lives in the Keychain, keyed by `id`.
-struct Account: Identifiable, Codable, Sendable, Hashable {
+struct Account: Codable, Sendable, Equatable {
     var id: String
     var displayName: String
     var organizationName: String?

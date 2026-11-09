@@ -7,10 +7,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "LimitPeek",
-            path: "Sources/LimitPeek",
-            swiftSettings: [
-                .swiftLanguageMode(.v6)
-            ]
+            path: "Sources/LimitPeek"
         ),
         .testTarget(
             name: "LimitPeekTests",

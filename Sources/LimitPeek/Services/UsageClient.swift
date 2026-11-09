@@ -19,7 +19,6 @@ struct UsageClient: Sendable {
                                    accessToken: String,
                                    scopes: [String] = []) async throws -> T {
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 

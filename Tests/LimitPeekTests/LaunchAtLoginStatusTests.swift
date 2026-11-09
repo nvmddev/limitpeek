@@ -12,35 +12,31 @@ struct LaunchAtLoginStatusTests {
         #expect(LaunchAtLoginStatus(.notFound) == .unavailable)
     }
 
-    @Test func disabledIsNeitherEnabledNorEffective() {
+    @Test func disabledIsNotEnabled() {
         let status = LaunchAtLoginStatus.disabled
 
         #expect(!status.isEnabled)
         #expect(!status.needsApproval)
-        #expect(!status.isEffective)
     }
 
-    @Test func enabledIsEnabledAndEffective() {
+    @Test func enabledIsEnabled() {
         let status = LaunchAtLoginStatus.enabled
 
         #expect(status.isEnabled)
         #expect(!status.needsApproval)
-        #expect(status.isEffective)
     }
 
-    @Test func requiresApprovalIsEnabledButNotEffective() {
+    @Test func requiresApprovalIsEnabledButNeedsApproval() {
         let status = LaunchAtLoginStatus.requiresApproval
 
         #expect(status.isEnabled)
         #expect(status.needsApproval)
-        #expect(!status.isEffective)
     }
 
-    @Test func unavailableIsNeitherEnabledNorEffective() {
+    @Test func unavailableIsNotEnabled() {
         let status = LaunchAtLoginStatus.unavailable
 
         #expect(!status.isEnabled)
         #expect(!status.needsApproval)
-        #expect(!status.isEffective)
     }
 }

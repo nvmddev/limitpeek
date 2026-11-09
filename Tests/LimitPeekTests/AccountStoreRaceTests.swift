@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import LimitPeek
 
@@ -68,10 +69,10 @@ struct AccountStoreRaceTests {
         #expect(oldOutcome == .skipped)
 
         #expect(store.isSignedIn)
-        #expect(store.selectedAccount?.id == raceAccountID)
+        #expect(store.account?.id == raceAccountID)
         #expect(store.display?.sessionPercent == 77)
         #expect(store.lastError == nil)
-        #expect(store.rateLimit == nil)
+        #expect(store.rateLimitedUntil == nil)
         #expect(tokens.pair(for: raceAccountID)?.accessToken == "access-new")
         #expect(states.contains(.signedOut))
         #expect(states.last == .signedIn)
@@ -206,7 +207,7 @@ struct AccountStoreRaceTests {
 
         let store = makeStore(defaults: defaults, tokens: tokens)
         try await signIn(store)
-        let accountID = try #require(store.selectedAccount?.id)
+        let accountID = try #require(store.account?.id)
 
         tokens.failDeletes()
         store.signOut()
@@ -214,7 +215,7 @@ struct AccountStoreRaceTests {
         #expect(!store.isSignedIn)
         #expect(store.display == nil)
         #expect(store.lastError == nil)
-        #expect(store.rateLimit == nil)
+        #expect(store.rateLimitedUntil == nil)
         #expect(store.authIssue == nil)
         #expect(store.sessionState == .signedOut)
         #expect(store.tokenCleanupNotice != nil)
@@ -243,7 +244,7 @@ struct AccountStoreRaceTests {
 
         let store = makeStore(defaults: defaults, tokens: tokens)
         try await signIn(store)
-        let accountID = try #require(store.selectedAccount?.id)
+        let accountID = try #require(store.account?.id)
 
         tokens.failDeletes()
         store.signOut()
@@ -359,14 +360,15 @@ struct AccountStoreRaceTests {
         defer { RaceURLProtocol.handler = nil }
 
         let store = makeStore(defaults: defaults, tokens: tokens)
-        #expect(await store.refresh(force: true) == .rateLimited(nil))
+        #expect(await store.refresh(force: true) == .rateLimited)
 
-        let deadline = try #require(store.rateLimit?.deadline)
-        #expect(deadline.timeIntervalSinceNow >= 299)
+        let deadline = try #require(store.rateLimitedUntil)
+        #expect(deadline.timeIntervalSinceNow >= AccountStore.rateLimitFallback - 1)
 
         var schedule = PollSchedule()
-        #expect(schedule.nextDelay(after: .rateLimited(nil), isLowPowerMode: false)
-                == AccountStore.rateLimitFallback)
+        schedule.record(.rateLimited)
+        #expect(schedule.nextPoll(after: store.lastRefreshAt, rateLimitedUntil: deadline,
+                                  isLowPowerMode: false) == deadline)
         #expect(await store.refresh(force: true) == .skipped)
     }
 
@@ -459,7 +461,7 @@ struct AccountStoreRaceTests {
 
         #expect(probe.accountWasPresent == false)
         #expect(!store.isSignedIn)
-        #expect(store.accounts.isEmpty)
+        #expect(store.account == nil)
         #expect(tokens.pair(for: raceAccountID) == nil)
         #expect((defaults.stringArray(forKey: "pendingTokenCleanup") ?? []).isEmpty)
         #expect(store.tokenCleanupNotice == nil)
@@ -510,20 +512,16 @@ struct AccountStoreRaceTests {
 
 private struct TimeoutExpired: Error {}
 
-private final class TimeoutRace<T: Sendable>: @unchecked Sendable {
-    private let lock = NSLock()
-    private var finished = false
+/// Resumes the continuation with whichever result arrives first.
+private final class TimeoutRace<T: Sendable>: Sendable {
+    private let finished = OSAllocatedUnfairLock(initialState: false)
 
-    func finish(_ result: Result<T, Error>,
-                _ continuation: CheckedContinuation<T, Error>) {
-        lock.lock()
-        guard !finished else {
-            lock.unlock()
-            return
+    func finish(_ result: Result<T, any Error>, _ continuation: CheckedContinuation<T, any Error>) {
+        let isFirst = finished.withLock { finished in
+            defer { finished = true }
+            return !finished
         }
-        finished = true
-        lock.unlock()
-        continuation.resume(with: result)
+        if isFirst { continuation.resume(with: result) }
     }
 }
 
@@ -613,161 +611,120 @@ private final class DelayedDelivery: @unchecked Sendable {
     }
 }
 
-/// Holds one response without blocking the URL loading thread: `arrive` wakes
+/// Holds one response without blocking the URL loading thread: arriving wakes
 /// the test, `release` lets the response through. Continuations are one-shot.
-private final class AsyncGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var arrived = false
-    private var released = false
-    private var arrivalWaiter: CheckedContinuation<Void, Never>?
-    private var releaseWaiter: CheckedContinuation<Void, Never>?
+private final class AsyncGate: Sendable {
+    private struct State: Sendable {
+        var arrived = false
+        var released = false
+        var arrivalWaiter: CheckedContinuation<Void, Never>?
+        var releaseWaiter: CheckedContinuation<Void, Never>?
+    }
+
+    private let state = OSAllocatedUnfairLock(initialState: State())
 
     func arriveAndWaitForRelease() async {
-        arrive()
-        await waitForRelease()
+        let arrivalWaiter = state.withLock { state in
+            state.arrived = true
+            defer { state.arrivalWaiter = nil }
+            return state.arrivalWaiter
+        }
+        arrivalWaiter?.resume()
+        await withCheckedContinuation { continuation in
+            let isReleased = state.withLock { state in
+                if !state.released { state.releaseWaiter = continuation }
+                return state.released
+            }
+            if isReleased { continuation.resume() }
+        }
     }
 
     func waitForArrival() async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            lock.lock()
-            if arrived {
-                lock.unlock()
-                continuation.resume()
-            } else {
-                arrivalWaiter = continuation
-                lock.unlock()
+        await withCheckedContinuation { continuation in
+            let hasArrived = state.withLock { state in
+                if !state.arrived { state.arrivalWaiter = continuation }
+                return state.arrived
             }
+            if hasArrived { continuation.resume() }
         }
     }
 
     func release() {
-        lock.lock()
-        released = true
-        let waiter = releaseWaiter
-        releaseWaiter = nil
-        lock.unlock()
-        waiter?.resume()
-    }
-
-    private func arrive() {
-        lock.lock()
-        arrived = true
-        let waiter = arrivalWaiter
-        arrivalWaiter = nil
-        lock.unlock()
-        waiter?.resume()
-    }
-
-    private func waitForRelease() async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            lock.lock()
-            if released {
-                lock.unlock()
-                continuation.resume()
-            } else {
-                releaseWaiter = continuation
-                lock.unlock()
-            }
+        let releaseWaiter = state.withLock { state in
+            state.released = true
+            defer { state.releaseWaiter = nil }
+            return state.releaseWaiter
         }
+        releaseWaiter?.resume()
     }
 }
 
-private final class LockedCounter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var value = 0
-
-    func increment() -> Int {
-        lock.lock()
-        defer { lock.unlock() }
-        value += 1
-        return value
-    }
-
-    var current: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return value
-    }
-}
-
-private final class LockedFlag: @unchecked Sendable {
-    private let lock = NSLock()
-    private var value = false
+private final class LockedFlag: Sendable {
+    private let value = OSAllocatedUnfairLock(initialState: false)
 
     func set() {
-        lock.lock()
-        defer { lock.unlock() }
-        value = true
+        value.withLock { $0 = true }
     }
 
     var isSet: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return value
+        value.withLock { $0 }
     }
 }
 
 /// Records whether the account still existed when its token was deleted.
-private final class OrderProbe: @unchecked Sendable {
-    private let lock = NSLock()
-    private var present = true
+private final class OrderProbe: Sendable {
+    private let present = OSAllocatedUnfairLock(initialState: true)
 
     func record(accountPresent: Bool) {
-        lock.lock()
-        defer { lock.unlock() }
-        present = accountPresent
+        present.withLock { $0 = accountPresent }
     }
 
     var accountWasPresent: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return present
+        present.withLock { $0 }
     }
 }
 
-private final class RaceTokenStore: TokenStoring, @unchecked Sendable {
-    private let lock = NSLock()
-    private var pairs: [String: TokenPair] = [:]
-    private var deleteFailure: Error?
-    /// Called synchronously at the start of `delete`, before the item is gone.
-    var onDelete: (@Sendable () -> Void)?
+private final class RaceTokenStore: TokenStoring {
+    private struct State: Sendable {
+        var pairs: [String: TokenPair] = [:]
+        var failsDeletes = false
+        /// Called at the start of `delete`, before the item is gone.
+        var onDelete: (@Sendable () -> Void)?
+    }
+
+    private let state = OSAllocatedUnfairLock(initialState: State())
+
+    var onDelete: (@Sendable () -> Void)? {
+        get { state.withLock { $0.onDelete } }
+        set { state.withLock { $0.onDelete = newValue } }
+    }
 
     func save(_ pair: TokenPair, for accountID: String) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        pairs[accountID] = pair
+        state.withLock { $0.pairs[accountID] = pair }
     }
 
     func load(for accountID: String) throws -> TokenPair? {
-        lock.lock()
-        defer { lock.unlock() }
-        return pairs[accountID]
+        state.withLock { $0.pairs[accountID] }
     }
 
     func delete(for accountID: String) throws {
         onDelete?()
-        lock.lock()
-        defer { lock.unlock() }
-        if let deleteFailure { throw deleteFailure }
-        pairs[accountID] = nil
+        try state.withLock { state in
+            if state.failsDeletes { throw KeychainError.status(errSecItemNotFound) }
+            state.pairs[accountID] = nil
+        }
     }
 
     func pair(for accountID: String) -> TokenPair? {
-        lock.lock()
-        defer { lock.unlock() }
-        return pairs[accountID]
+        state.withLock { $0.pairs[accountID] }
     }
 
     func failDeletes() {
-        lock.lock()
-        defer { lock.unlock() }
-        deleteFailure = KeychainError.status(-25300)
+        state.withLock { $0.failsDeletes = true }
     }
 
     func allowDeletes() {
-        lock.lock()
-        defer { lock.unlock() }
-        deleteFailure = nil
+        state.withLock { $0.failsDeletes = false }
     }
 }
 
