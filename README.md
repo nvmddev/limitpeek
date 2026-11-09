@@ -60,7 +60,7 @@ LimitPeek gets its own token. This does not sign you out of Claude Code.
 
 ## How it works
 
-LimitPeek reads your usage from the same API that Claude Code uses. It checks every 3 minutes, or every 5 minutes in Low Power Mode. It stops while your Mac or its display sleeps.
+LimitPeek reads your usage from the same API that Claude Code uses. It checks once a minute, or every 5 minutes in Low Power Mode. It stops while your Mac or its display sleeps.
 
 If the server sends a rate limit error, LimitPeek waits at least 5 minutes before it tries again.
 

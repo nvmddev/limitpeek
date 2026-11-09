@@ -68,7 +68,7 @@ final class Refresher {
 /// How long to wait between polls. Separated so the backoff can be tested
 /// without timers or network.
 struct PollSchedule: Sendable {
-    static let normalInterval: TimeInterval = 180
+    static let normalInterval: TimeInterval = 60
     /// Low Power Mode, and after a 429 until a poll lands again.
     static let slowInterval: TimeInterval = 300
 
