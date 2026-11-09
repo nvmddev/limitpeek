@@ -8,106 +8,92 @@ Your Claude usage limits in the macOS menu bar.
 
 [![CI](https://github.com/nvmddev/limitpeek/actions/workflows/ci.yml/badge.svg)](https://github.com/nvmddev/limitpeek/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/nvmddev/limitpeek?sort=semver&label=release)](https://github.com/nvmddev/limitpeek/releases/latest)
-[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000)](#requirements)
+[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000)](#install)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+<img src="docs/menu-light.png" width="380" alt="The LimitPeek menu in light mode">
+<img src="docs/menu-dark.png" width="380" alt="The LimitPeek menu in dark mode">
 
 </div>
 
-The 5-hour window sits in the menu bar as a bar and a percentage. Everything
-else, like weekly limits and usage credits, is one click away.
+> [!IMPORTANT]
+> LimitPeek is not an official Anthropic app. Read the [disclaimer](#disclaimer) before you use it.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/menubar-dark.png">
-  <img src="docs/menubar-light.png" width="234"
-       alt="The menu bar item at 40 percent, at 84 percent in amber, and at 97 percent in red">
-</picture>
+## Features
 
-<sub>Actual size, at 40%, 84% and 97%.</sub>
+The menu bar item shows how much of your 5-hour limit you used. It turns amber at 80% and red at 95%.
 
-> Unofficial, and not affiliated with Anthropic. It reads the same undocumented
-> endpoint the official clients use, which means it can break when that changes.
+<p align="center">
+  <img src="docs/menubar-light.png" width="258" alt="The menu bar item at 40%, 84% and 97% in light mode">
+  <img src="docs/menubar-dark.png" width="258" alt="The menu bar item at 40%, 84% and 97% in dark mode">
+</p>
+
+Click it to see all your limits:
+
+- The 5-hour limit
+- Weekly limits, also per model if your plan has them
+- Usage credits, if your account has them
+
+Each limit shows when it resets. In **Settings**, you can show only the bar or only the percentage. You can also start LimitPeek at login.
 
 ## Install
+
+LimitPeek needs macOS 14 or later on a Mac with Apple silicon.
+
+Install it with Homebrew:
 
 ```sh
 brew install --cask nvmddev/tap/limitpeek
 ```
 
-Or grab the `.dmg` from the [latest release](https://github.com/nvmddev/limitpeek/releases/latest)
-and drag **LimitPeek.app** into `/Applications`.
+Or download the `.dmg` from the [latest release](https://github.com/nvmddev/limitpeek/releases/latest). Then move LimitPeek to your Applications folder.
 
-Sign in once from the menu bar item: it opens claude.com in your browser, and you
-paste the code it shows into LimitPeek's sign-in window.
+## Sign in
 
-## What it shows
+1. Click the LimitPeek item in the menu bar.
+2. Choose **Sign In with Claude…**. Your browser opens.
+3. Sign in to Claude and allow access. Claude then shows a code.
+4. Copy the code and paste it into the LimitPeek window.
+5. Click **Continue**.
 
-- The 5-hour limit, in the menu bar. Amber at 80%, red at 95%.
-- Weekly limits and usage credits in a native menu, including per-model weekly
-  buckets when your plan has them.
-- When each limit resets, to the minute: "Resets at 14:00 (1h 15m)" within a
-  day, the weekday and time within a week.
-- Bar and percentage in the menu bar, or only one of the two.
-- Launch at login, if you want it.
+LimitPeek gets its own token. This does not sign you out of Claude Code.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/menu-dark.png">
-  <img src="docs/menu-light.png" width="470"
-       alt="The menu: the 5-hour limit, the weekly limit and usage credits, each with a bar and when it resets">
-</picture>
+## How it works
 
-<sub>Sample account; the numbers are the response the tests pin.</sub>
+LimitPeek reads your usage from the same API that Claude Code uses. It checks every 3 minutes, or every 5 minutes in Low Power Mode. It stops while your Mac or its display sleeps.
 
-It polls every three minutes, counted from the last request, so opening the
-menu or pressing Refresh does not add an extra one. It stops while the Mac or its
-display sleeps and stretches to five minutes in Low Power Mode. If the server
-rate-limits it, it backs off and eases back to the normal cadence once requests
-land again.
-
-## Requirements
-
-macOS 14 (Sonoma) or newer on Apple silicon (arm64). The release build is
-arm64-only.
+If the server sends a rate limit error, LimitPeek waits at least 5 minutes before it tries again.
 
 ## Privacy
 
-The token is requested with the `user:profile` scope only — it can read your
-profile and usage, and cannot spend inference. It lives in the Keychain and
-nowhere else: not in a file, not in a log, not in UserDefaults.
+- LimitPeek asks only for the `user:profile` scope. With it, LimitPeek can read your profile and usage. It cannot send messages to Claude.
+- The token stays in your macOS Keychain. LimitPeek does not write it to a file or a log.
+- LimitPeek connects only to `api.anthropic.com` and `platform.claude.com`.
+- The app runs in the macOS App Sandbox. It collects no analytics.
 
-The app is sandboxed with two entitlements, `app-sandbox` and `network.client`.
-Sign-in uses the paste-the-code redirect rather than a local listener, so it
-never needs to accept an inbound connection. It talks to `api.anthropic.com` and
-`platform.claude.com` and nothing else. No telemetry.
+Sign out before you uninstall LimitPeek. This deletes the token from the Keychain.
 
-Signing in here does not disturb your `claude` CLI login — LimitPeek holds its
-own token.
+## Build from source
 
-## Build
+You need Xcode. There are no other dependencies.
 
 ```sh
-./build.sh          # release, Apple silicon → build/LimitPeek.app
-./build.sh --debug  # host arch only, faster
-./build.sh --run    # build and relaunch
-swift test
+./build.sh          # release build for Apple silicon, in build/LimitPeek.app
+./build.sh --debug  # faster debug build
+./build.sh --run    # build, then start the app
+swift test          # run the tests
 ```
 
-Needs Xcode for swift-testing and the toolchain; `build.sh` finds it even if
-`xcode-select` still points at the Command Line Tools. Zero dependencies.
+For code signing and notarization, see [docs/signing.md](docs/signing.md).
 
-The pictures above are drawn by the app's own views —
-`scripts/make-readme-art.sh` re-renders them into `docs/` after a change to the
-menu bar label, the menu or the icon.
+## Disclaimer
 
-Signing, notarisation and the Keychain permission prompt are covered in
-[docs/signing.md](docs/signing.md).
+LimitPeek is not an official Anthropic product. Anthropic does not support or endorse it.
 
-## Where the data comes from
+LimitPeek uses a private Anthropic API. When Anthropic changes this API, LimitPeek can stop working.
 
-`GET https://api.anthropic.com/api/oauth/usage`, with an OAuth bearer token,
-plus `/api/oauth/profile` once at sign-in for the name in the header. `Tests/`
-pins the parts of the response the app relies on, so a change to the API shows
-up as a failing test rather than an empty menu.
+LimitPeek signs in with the OAuth client of Claude Code. Anthropic's [usage policy](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use) does not allow third-party apps to offer a Claude login or to store Claude tokens. Anthropic can enforce this at any time and without notice. Use LimitPeek at your own risk.
 
 ## License
 
-MIT
+[MIT](LICENSE)
