@@ -19,7 +19,7 @@ else, like weekly limits and usage credits, is one click away.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/menubar-dark.png">
   <img src="docs/menubar-light.png" width="234"
-       alt="The menu bar item at 40 percent, at 84 percent in orange, and at 97 percent in red">
+       alt="The menu bar item at 40 percent, at 84 percent in amber, and at 97 percent in red">
 </picture>
 
 <sub>Actual size, at 40%, 84% and 97%.</sub>
@@ -41,7 +41,7 @@ paste the code back.
 
 ## What it shows
 
-- The 5-hour limit, in the menu bar. Orange at 80%, red at 95%.
+- The 5-hour limit, in the menu bar. Amber at 80%, red at 95%.
 - Weekly limits and usage credits in the popover, including per-model weekly
   buckets when your plan has them.
 - Bar and percentage in the menu bar, or only one of the two.
@@ -49,7 +49,7 @@ paste the code back.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/popover-dark.png">
-  <img src="docs/popover-light.png" width="320"
+  <img src="docs/popover-light.png" width="366"
        alt="The popover: the 5-hour limit, the weekly limit and usage credits, each with a bar and a reset time">
 </picture>
 

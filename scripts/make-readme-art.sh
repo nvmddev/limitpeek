@@ -2,7 +2,8 @@
 #
 # Renders the README pictures into docs/ from scripts/ReadmeArt.swift. Run it
 # after changing the menu bar label, the popover or the icon, and commit what
-# it writes.
+# it writes. The popover is captured on screen, so the terminal needs Screen
+# Recording permission, and a window flashes up briefly per appearance.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

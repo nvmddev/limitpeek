@@ -66,12 +66,47 @@ git diff --check                                     # ok
   required and resumes on sign-in. `PollSchedule` backs off on 429, and
   `RefreshTimelineSchedule` ticks at 1 s only in the final minute before a
   deadline, otherwise at 30 s.
-- UI: launch-at-login status is re-read on
+- UI colors: one palette in `Palette`. Graphite is the accent at rest, so
+  color only appears at the thresholds: amber for warning, coral red for
+  critical, each with a lighter dark-mode variant. `UsagePopover` sets the
+  accent as `.tint` at its root, so the gauges, the Launch at Login switch,
+  the menu bar style selector and the sign-in buttons use it instead of the
+  system accent color; a red or green system accent no longer clashes with
+  the gauges. `Palette.onAccent` is the text on an accent fill (dark in dark
+  mode). The header glyph is a fixed silver (`Palette.glyph`), not
+  `.secondary`, which vibrancy darkens to near black over dark windows behind
+  the glass. "Start Over" and "Back" opt out with `.tint(nil)`, because a
+  tinted bordered button colors its label and reads as disabled. The menu bar
+  label stays a template image below the warning threshold.
+- Popover background: on macOS 26 and later the menu bar extra's Liquid Glass
+  lets the window behind it show through, so over a dark window a light
+  popover turned mid-gray and the palette's fixed colors lost their contrast
+  (the "Tinted" Liquid Glass setting does not prevent it). `panelBackground()`
+  in `PanelComponents.swift` puts the `.menu` material, the one behind system
+  menus, under the content, clipped to the window's 6 pt corner
+  (`PanelMetrics.cornerRadius`). It stays as light or dark as the appearance
+  and follows Reduce Transparency and Increase Contrast. The live menu bar
+  window cannot be opened programmatically for a capture (the status item is
+  drawn out of process and ignores synthetic clicks), so this was checked on
+  an `NSGlassEffectView` replica, not the live window.
+- UI: a mini `.switch` toggle for Launch at Login, `Gauge` with the
+  `CapacityBarStyle` in `LimitRow.swift` (a slim bar on a track of its own
+  tint, no dot at 0%), and `.borderedProminent` / default-action buttons in
+  `SignInView`. `PanelMetrics` in `PanelComponents.swift` is the one grid for
+  margins, row height and highlight inset; trailing text aligns on the title's
+  first baseline. Two pieces are hand-built: `MenuActionRow`, because SwiftUI
+  has no menu-item button style for a window-style menu bar extra, and
+  `MenuBarStyleRow`, because a segmented `Picker` paints its selected segment
+  gray (near black over a dark window behind the glass) whenever the panel is
+  not key. Both suppress the focus ring with `.focusEffectDisabled()`.
+  Launch-at-login status is re-read on
   `NSApplication.didBecomeActiveNotification` (see `LaunchAtLoginRow` and
-  `LoginItem`). The selected segment uses `Palette.selectionFill` with white
-  text, and menu action rows suppress the focus ring with
-  `.focusEffectDisabled()`. Accessibility labels/values and adaptive
-  warning/critical colors live in `UsagePopover`, `LimitRow` and `Palette`.
+  `LoginItem`). The code field takes focus through `.defaultFocus`, since the
+  window is not key yet when `onAppear` runs.
+- README art: `scripts/ReadmeArt.swift` shoots the popover on screen with
+  `screencapture` over a neutral backdrop, in the `.menu` material and with the
+  accent pinned to blue, because AppKit-backed controls and the material only
+  render in a live key window. The terminal needs Screen Recording permission.
 - Menu bar cache: `MenuBarLabelCache` redraws on `NSApp.effectiveAppearance` KVO
   and keys renders on quantised percent, style and appearance, so polls that do
   not change the drawn value redraw nothing.

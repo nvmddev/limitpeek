@@ -1,26 +1,32 @@
 import SwiftUI
 
+/// One palette for the whole app: neutral graphite at rest, so color only
+/// appears as usage climbs, amber and then coral red. Controls take the accent
+/// too instead of the system accent color, so a red or green system accent
+/// cannot clash with the gauges. Dark mode gets lighter variants.
 enum Palette {
-    static let accent = Color(hex: 0xD97757)
-    static let lightBackground = Color(hex: 0xF0EEE6)
-    static let darkBackground = Color(hex: 0x1F1E1D)
+    static func accent(for scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(hex: 0xC7CBD1) : Color(hex: 0x6D7279)
+    }
 
-    /// Fill for the selected menu-bar segment. White on this measures 4.99:1
-    /// (WCAG AA needs 4.5:1), versus only 3.12:1 on `accent`. Independent of
-    /// the color scheme because the comparison is against the white text.
-    static let selectionFill = Color(hex: 0xB4532A)
+    /// Text on an accent fill. Dark in dark mode, where the accent is too light
+    /// for white.
+    static func onAccent(for scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(hex: 0x1C1E22) : .white
+    }
 
-    /// Darker in light mode so the warning gauge and text keep enough contrast.
+    /// Fixed colors rather than `.secondary`: vibrancy darkens a hierarchical
+    /// style over whatever sits behind the glass, down to near black.
+    static func glyph(for scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(hex: 0xC9CDD3) : Color(hex: 0x9298A1)
+    }
+
     static func warning(for scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(hex: 0xC68A4B) : Color(hex: 0x9C5A1B)
+        scheme == .dark ? Color(hex: 0xF3AF49) : Color(hex: 0xED9E2F)
     }
 
     static func critical(for scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(hex: 0xE8835E) : Color(hex: 0xB14A24)
-    }
-
-    static func background(for scheme: ColorScheme) -> Color {
-        scheme == .dark ? darkBackground : lightBackground
+        scheme == .dark ? Color(hex: 0xED6865) : Color(hex: 0xDB4144)
     }
 }
 

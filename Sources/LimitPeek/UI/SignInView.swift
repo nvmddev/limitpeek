@@ -14,7 +14,7 @@ struct SignInView: View {
     /// `startsInCodeEntry` is for a reauthentication, where the caller has
     /// already opened the browser and kept the PKCE challenge in the store.
     /// The ordinary first sign-in keeps the default and opens the browser
-    /// from its own button. `onRestart` adds the "Start over" link and is only
+    /// from its own button. `onRestart` adds the "Start Over" button and is only
     /// passed by the reauthentication flow.
     init(startsInCodeEntry: Bool = false,
          onCancel: (() -> Void)? = nil,
@@ -25,97 +25,110 @@ struct SignInView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("LimitPeek")
-                    .font(.headline)
-                Text("Sign in to see your usage limits.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
+        VStack(alignment: .leading, spacing: 0) {
+            PanelHeader(title: "LimitPeek", subtitle: "Sign in to see your usage limits.")
 
-            if didOpenBrowser {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Paste the code from the browser:")
-                        .font(.callout)
-                    TextField("Authorization code", text: $pastedCode)
-                        .textFieldStyle(.roundedBorder)
-                        .focused($codeFieldFocused)
-                        .onSubmit(submit)
-
-                    HStack {
-                        Button("Back") {
-                            if let onCancel {
-                                onCancel()
-                            } else {
-                                didOpenBrowser = false
-                                pastedCode = ""
-                                store.cancelSignIn()
-                            }
-                        }
-                        .disabled(store.isSigningIn)
-                        if let onRestart {
-                            Button("Start over") {
-                                pastedCode = ""
-                                onRestart()
-                            }
-                            .buttonStyle(.link)
-                            .disabled(store.isSigningIn)
-                        }
-                        Spacer()
-                        Button("Continue", action: submit)
-                            .keyboardShortcut(.defaultAction)
-                            .disabled(pastedCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                      || store.isSigningIn)
+            VStack(alignment: .leading, spacing: 10) {
+                if didOpenBrowser {
+                    codeEntry
+                } else {
+                    Button {
+                        NSWorkspace.shared.open(store.beginSignIn())
+                        didOpenBrowser = true
+                        codeFieldFocused = true
+                    } label: {
+                        Text("Sign in with Claude")
+                            .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
                 }
-            } else {
-                Button {
-                    NSWorkspace.shared.open(store.beginSignIn())
-                    didOpenBrowser = true
-                    codeFieldFocused = true
-                } label: {
-                    Text("Sign in with Claude")
-                        .frame(maxWidth: .infinity)
-                }
-                .controlSize(.large)
-                .buttonStyle(.borderedProminent)
-            }
 
-            if let error = store.lastError {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(Palette.critical(for: colorScheme))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            // Only while signed out: a reauthentication still owns the account,
-            // so the sign-out notice would be misleading there.
-            if !store.isSignedIn, let notice = store.tokenCleanupNotice {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(notice)
-                        .font(.caption)
-                        .foregroundStyle(Palette.warning(for: colorScheme))
+                if let error = store.lastError {
+                    Text(error)
+                        .font(.subheadline)
+                        .foregroundStyle(Palette.critical(for: colorScheme))
                         .fixedSize(horizontal: false, vertical: true)
-                    Button("Try Again") {
-                        store.retryPendingTokenCleanup()
+                }
+
+                // Only while signed out: a reauthentication still owns the account,
+                // so the sign-out notice would be misleading there.
+                if !store.isSignedIn, let notice = store.tokenCleanupNotice {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(notice)
+                            .font(.subheadline)
+                            .foregroundStyle(Palette.warning(for: colorScheme))
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Try Again") {
+                            store.retryPendingTokenCleanup()
+                        }
+                        .buttonStyle(.link)
+                        .font(.subheadline)
                     }
-                    .buttonStyle(.link)
                 }
             }
+            .padding(.horizontal, PanelMetrics.margin)
+            .padding(.top, 14)
+            .padding(.bottom, 9)
 
-            Divider()
+            PanelSeparator()
 
-            Button("Quit") { NSApplication.shared.terminate(nil) }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+            MenuActionRow(title: "Quit LimitPeek", shortcut: "q") {
+                NSApplication.shared.terminate(nil)
+            }
         }
-        .padding(14)
-        .frame(width: 280)
-        .onAppear {
-            // Reauthentication starts directly in the code-entry step.
-            if didOpenBrowser { codeFieldFocused = true }
+        .padding(.top, 12)
+        .padding(.bottom, PanelMetrics.highlightInset)
+        .frame(width: PanelMetrics.width)
+    }
+
+    private var codeEntry: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("Authorization Code", text: $pastedCode,
+                      prompt: Text("Paste the code from your browser"))
+                .textFieldStyle(.roundedBorder)
+                .labelsHidden()
+                .focused($codeFieldFocused)
+                .onSubmit(submit)
+
+            // A tinted bordered button colors its label, which reads as
+            // disabled, so only Continue keeps the palette's tint.
+            HStack(spacing: 8) {
+                if let onRestart {
+                    Button("Start Over") {
+                        pastedCode = ""
+                        onRestart()
+                    }
+                    .tint(nil)
+                    .disabled(store.isSigningIn)
+                }
+                Spacer(minLength: 0)
+                if store.isSigningIn {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Button("Back") {
+                    if let onCancel {
+                        onCancel()
+                    } else {
+                        didOpenBrowser = false
+                        pastedCode = ""
+                        store.cancelSignIn()
+                    }
+                }
+                .keyboardShortcut(.cancelAction)
+                .tint(nil)
+                .disabled(store.isSigningIn)
+                Button("Continue", action: submit)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(pastedCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || store.isSigningIn)
+            }
         }
+        // Reauthentication opens straight into this step, and the window is
+        // not key yet when onAppear runs, so this is the reliable hook.
+        .defaultFocus($codeFieldFocused, true)
     }
 
     private func submit() {
