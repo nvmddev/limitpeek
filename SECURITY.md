@@ -2,34 +2,32 @@
 
 ## Supported versions
 
-Only the latest release gets fixes. Please reproduce on the newest version
-before reporting.
+Only the latest release gets security fixes. Make sure that the problem also occurs in the latest version before you report it.
 
-## Reporting a vulnerability
+## Report a vulnerability
 
-Report privately through GitHub's
-[security advisory form](https://github.com/nvmddev/limitpeek/security/advisories/new)
-— not a public issue. Include what you did, what happened, and the version and
-macOS version you saw it on.
+Do not open a public issue. Use the [private report form](https://github.com/nvmddev/limitpeek/security/advisories/new) on GitHub.
 
-**Don't paste a live token into a report.** A redacted description, or one you
-have already invalidated by signing out, is enough.
+Include these details:
 
-## What's in scope
+- What you did
+- What happened
+- The LimitPeek version and the macOS version
 
-LimitPeek holds an OAuth access and refresh token for your Claude account in the
-Keychain and sends the access token to `api.anthropic.com`. Worth reporting:
+Do not include a token in the report. Remove tokens from logs and screenshots before you send them.
 
-- The token appearing anywhere it shouldn't — a log, a crash report, an error
-  message in the UI, a request to any other host.
-- Requests going somewhere other than `api.anthropic.com` or
-  `platform.claude.com`.
-- Anything that lets another local process read the stored token beyond what the
-  Keychain's own access control implies.
-- Tampering with a released `.app`, `.dmg`, or with the release pipeline.
+## Scope
 
-## Not in scope
+LimitPeek keeps an OAuth access token and a refresh token in the macOS Keychain. It sends the access token to `api.anthropic.com` and the refresh token to `platform.claude.com`.
 
-The usage endpoint is undocumented and may change or disappear; that is a bug,
-not a vulnerability. Same for anything requiring an attacker who already has
-admin access to your Mac.
+Report these problems:
+
+- A token appears where it must not, for example in a log, a crash report, an error message or a request to a different host.
+- LimitPeek sends a request to a host other than `api.anthropic.com` or `platform.claude.com`.
+- Another process on the Mac can read the token, although the Keychain does not allow it.
+- Someone can change a released `.app`, `.dmg` or `.zip` file, or the release pipeline.
+
+## Out of scope
+
+- Changes to the private usage API. These are bugs, not vulnerabilities. Open a normal issue for them.
+- Attacks that need administrator access to your Mac.
