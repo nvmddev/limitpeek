@@ -13,13 +13,15 @@ enum LimitPeekApp {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = AccountStore()
+    private let updates = UpdateChecker(current: Bundle.main.shortVersion)
     private lazy var refresher = Refresher(store: store)
-    private lazy var statusItem = StatusItemController(store: store)
+    private lazy var statusItem = StatusItemController(store: store, updates: updates)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = Self.mainMenu()
         statusItem.install()
         refresher.start()
+        updates.start()
     }
 
     /// An agent app shows no menu bar, but its key equivalents still work:

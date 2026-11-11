@@ -9,6 +9,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     let menu = NSMenu()
 
     private let store: AccountStore
+    private let updates: UpdateChecker?
     private let launchAtLoginStatus: @MainActor () -> LaunchAtLoginStatus
     private let signInWindow: SignInWindowController
     private var statusItem: NSStatusItem?
@@ -29,8 +30,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var captionTimer: Timer?
 
     init(store: AccountStore,
+         updates: UpdateChecker? = nil,
          launchAtLoginStatus: @escaping @MainActor () -> LaunchAtLoginStatus = { LoginItem.status }) {
         self.store = store
+        self.updates = updates
         self.launchAtLoginStatus = launchAtLoginStatus
         signInWindow = SignInWindowController(store: store)
         super.init()
@@ -99,7 +102,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.removeAllItems()
 
         guard let account = store.account else {
-            addView(MenuHeader(title: "LimitPeek", subtitle: "Sign in to see your usage limits."))
+            addView(MenuHeader(title: "LimitPeek", subtitle: "Sign in to see your usage limits.",
+                               version: Self.version))
             menu.addItem(.separator())
             if let error = store.lastError {
                 addView(MenuNote(text: error, color: Palette.critical))
@@ -109,11 +113,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             menu.addItem(item("Sign In with Claude…", action: #selector(signIn)))
             menu.addItem(.separator())
+            if let update = updateItem() { menu.addItem(update) }
             menu.addItem(item("Quit LimitPeek", action: #selector(quit), key: "q"))
             return
         }
 
-        addView(MenuHeader(title: "Usage Limits", subtitle: account.subtitle))
+        addView(MenuHeader(title: "Usage Limits", subtitle: account.subtitle, version: Self.version))
         menu.addItem(.separator())
         if let rows = store.display?.rows, !rows.isEmpty {
             for row in rows { addView(LimitRow(row: row)) }
@@ -137,6 +142,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(refresh)
         menu.addItem(item("Usage on claude.ai…", action: #selector(openUsageSettings)))
         menu.addItem(.separator())
+        if let update = updateItem() { menu.addItem(update) }
         menu.addItem(settingsItem())
         menu.addItem(.separator())
         menu.addItem(item("Sign Out", action: #selector(signOut)))
@@ -167,6 +173,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let settings = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
         settings.submenu = submenu
         return settings
+    }
+
+    private static let version = Bundle.main.shortVersion
+
+    private func updateItem() -> NSMenuItem? {
+        guard let release = updates?.available else { return nil }
+        return item("Version \(release.version) Available…",
+                    subtitle: "Release notes and download on GitHub",
+                    action: #selector(openRelease))
     }
 
     private var reauthenticationReason: String {
@@ -232,6 +247,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func openUsageSettings() {
         NSWorkspace.shared.open(URL(string: "https://claude.ai/settings/usage")!)
+    }
+
+    @objc private func openRelease() {
+        if let page = updates?.available?.page { NSWorkspace.shared.open(page) }
     }
 
     @objc private func chooseStyle(_ sender: NSMenuItem) {
