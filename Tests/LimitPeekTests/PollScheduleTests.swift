@@ -5,51 +5,42 @@ import Testing
 struct PollScheduleTests {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
-    @Test func pollsEveryMinuteAndEveryFiveInLowPowerMode() {
-        let schedule = PollSchedule()
-
-        #expect(schedule.interval(isLowPowerMode: false) == 60)
-        #expect(schedule.interval(isLowPowerMode: true) == 300)
+    @Test func pollsEveryTwoMinutesAndEveryFiveInLowPowerMode() {
+        #expect(interval(after: now, isLowPowerMode: false) == 120)
+        #expect(interval(after: now, isLowPowerMode: true) == 300)
     }
 
-    @Test func slowsDownAfterARateLimitUntilAPollLands() {
-        var schedule = PollSchedule()
-
-        schedule.record(.rateLimited)
-        #expect(schedule.interval(isLowPowerMode: false) == 300)
-
-        schedule.record(.failed)
-        schedule.record(.skipped)
-        schedule.record(.signedOut)
-        #expect(schedule.interval(isLowPowerMode: false) == 300)
-
-        schedule.record(.updated)
-        #expect(schedule.interval(isLowPowerMode: false) == 60)
+    @Test func staysSlowForTwentyMinutesAfterARateLimit() {
+        #expect(interval(after: now, rateLimitedAt: now) == 300)
+        #expect(interval(after: now.addingTimeInterval(5 * 60), rateLimitedAt: now) == 300)
+        #expect(interval(after: now.addingTimeInterval(19 * 60), rateLimitedAt: now) == 300)
+        #expect(interval(after: now.addingTimeInterval(20 * 60), rateLimitedAt: now) == 120)
     }
 
     @Test func nextPollCountsFromTheLastRequestWhoeverMadeIt() {
-        let schedule = PollSchedule()
-
-        #expect(schedule.nextPoll(after: now, rateLimitedUntil: nil, isLowPowerMode: false)
-                == now.addingTimeInterval(60))
-        #expect(schedule.nextPoll(after: now, rateLimitedUntil: nil, isLowPowerMode: true)
+        #expect(PollSchedule.nextPoll(after: now, rateLimitedAt: nil, rateLimitedUntil: nil, isLowPowerMode: false)
+                == now.addingTimeInterval(120))
+        #expect(PollSchedule.nextPoll(after: now, rateLimitedAt: nil, rateLimitedUntil: nil, isLowPowerMode: true)
                 == now.addingTimeInterval(300))
     }
 
     @Test func nextPollWaitsForALaterRateLimitDeadline() {
-        let schedule = PollSchedule()
-
         let later = now.addingTimeInterval(600)
-        #expect(schedule.nextPoll(after: now, rateLimitedUntil: later, isLowPowerMode: false) == later)
+        #expect(PollSchedule.nextPoll(after: now, rateLimitedAt: nil, rateLimitedUntil: later,
+                                      isLowPowerMode: false) == later)
 
         let sooner = now.addingTimeInterval(30)
-        #expect(schedule.nextPoll(after: now, rateLimitedUntil: sooner, isLowPowerMode: false)
-                == now.addingTimeInterval(60))
+        #expect(PollSchedule.nextPoll(after: now, rateLimitedAt: nil, rateLimitedUntil: sooner,
+                                      isLowPowerMode: false) == now.addingTimeInterval(120))
     }
 
     @Test func nextPollIsDueAtOnceBeforeTheFirstRequest() {
-        let schedule = PollSchedule()
+        #expect(PollSchedule.nextPoll(after: .distantPast, rateLimitedAt: nil, rateLimitedUntil: nil,
+                                      isLowPowerMode: false) < .now)
+    }
 
-        #expect(schedule.nextPoll(after: .distantPast, rateLimitedUntil: nil, isLowPowerMode: false) < .now)
+    private func interval(after lastRequest: Date, rateLimitedAt: Date? = nil,
+                          isLowPowerMode: Bool = false) -> TimeInterval {
+        PollSchedule.interval(after: lastRequest, rateLimitedAt: rateLimitedAt, isLowPowerMode: isLowPowerMode)
     }
 }

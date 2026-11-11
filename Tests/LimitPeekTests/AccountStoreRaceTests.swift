@@ -364,11 +364,11 @@ struct AccountStoreRaceTests {
 
         let deadline = try #require(store.rateLimitedUntil)
         #expect(deadline.timeIntervalSinceNow >= AccountStore.rateLimitFallback - 1)
+        // No reading to fall back on, so the 429 is shown as an error.
+        #expect(store.lastError == APIError.rateLimited(retryAfter: nil).localizedDescription)
 
-        var schedule = PollSchedule()
-        schedule.record(.rateLimited)
-        #expect(schedule.nextPoll(after: store.lastRefreshAt, rateLimitedUntil: deadline,
-                                  isLowPowerMode: false) == deadline)
+        #expect(PollSchedule.nextPoll(after: store.lastRefreshAt, rateLimitedAt: store.rateLimitedAt,
+                                      rateLimitedUntil: deadline, isLowPowerMode: false) == deadline)
         #expect(await store.refresh(force: true) == .skipped)
     }
 
