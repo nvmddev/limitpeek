@@ -13,10 +13,9 @@ REF="${3:-HEAD}"
 REPO="${GITHUB_REPOSITORY:-nvmddev/limitpeek}"
 NOTARIZED="${NOTARIZED:-true}"
 
-# Without the version heading, and with the groups raised to the level of
-# the install section.
-scripts/changelog.sh section "$VERSION" "$PREVIOUS" "$REF" \
-	| tail -n +2 | sed -e '/./,$!d' -e 's/^### /## /'
+# Without the version heading, which the release title already gives. Every
+# section is a level 3 heading: GitHub draws level 2 large and ruled.
+scripts/changelog.sh section "$VERSION" "$PREVIOUS" "$REF" | tail -n +2 | sed '/./,$!d'
 
 if [[ -n "$PREVIOUS" ]]; then
 	printf '\n**Full diff:** https://github.com/%s/compare/%s...v%s\n' "$REPO" "$PREVIOUS" "$VERSION"
@@ -24,7 +23,7 @@ fi
 
 cat <<MD
 
-## Install or update
+### Install or update
 
 \`\`\`sh
 brew install --cask nvmddev/tap/limitpeek
@@ -46,7 +45,5 @@ fi
 
 cat <<'MD'
 
----
-
-LimitPeek is an unofficial project and is not affiliated with Anthropic.
+<sub>LimitPeek is an unofficial project and is not affiliated with Anthropic.</sub>
 MD
