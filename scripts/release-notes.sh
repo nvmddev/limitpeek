@@ -1,6 +1,7 @@
 #!/bin/bash
 #
-# Prints the body for a GitHub release.
+# Prints the body for a GitHub release: what changed first, then how to
+# install or update. `brew install` also upgrades an outdated cask.
 #
 #   release-notes.sh <version> [previous] [ref]
 set -euo pipefail
@@ -12,29 +13,24 @@ REF="${3:-HEAD}"
 REPO="${GITHUB_REPOSITORY:-nvmddev/limitpeek}"
 NOTARIZED="${NOTARIZED:-true}"
 
+# Without the version heading, which the release title already gives. Every
+# section is a level 3 heading: GitHub draws level 2 large and ruled.
+scripts/changelog.sh section "$VERSION" "$PREVIOUS" "$REF" | tail -n +2 | sed '/./,$!d'
+
+if [[ -n "$PREVIOUS" ]]; then
+	printf '\n**Full diff:** https://github.com/%s/compare/%s...v%s\n' "$REPO" "$PREVIOUS" "$VERSION"
+fi
+
 cat <<MD
-## Install
+
+### Install or update
 
 \`\`\`sh
 brew install --cask nvmddev/tap/limitpeek
 \`\`\`
 
 Or download \`LimitPeek-${VERSION}.dmg\` below and drag **LimitPeek.app** into
-\`/Applications\`. Apple silicon (arm64), macOS 14 or newer.
-
-## Update
-
-With Homebrew:
-
-\`\`\`sh
-brew upgrade --cask limitpeek
-\`\`\`
-
-Homebrew quits LimitPeek during the upgrade. Open it again afterwards.
-
-Without Homebrew, choose **Quit LimitPeek** in its menu. Then download
-\`LimitPeek-${VERSION}.dmg\` below, drag **LimitPeek.app** into \`/Applications\`,
-replace the old version and open it again.
+\`/Applications\`. To update, quit LimitPeek first and open it again afterwards.
 MD
 
 if [[ "$NOTARIZED" != "true" ]]; then
@@ -45,17 +41,3 @@ if [[ "$NOTARIZED" != "true" ]]; then
 > `xattr -dr com.apple.quarantine /Applications/LimitPeek.app`.
 MD
 fi
-
-echo
-scripts/changelog.sh section "$VERSION" "$PREVIOUS" "$REF" | tail -n +2
-
-if [[ -n "$PREVIOUS" ]]; then
-	printf '\n**Full diff:** https://github.com/%s/compare/%s...v%s\n' "$REPO" "$PREVIOUS" "$VERSION"
-fi
-
-cat <<'MD'
-
----
-
-LimitPeek is an unofficial project and is not affiliated with Anthropic.
-MD

@@ -314,11 +314,13 @@ jobs:
           git checkout -B "$BRANCH" "origin/${DEFAULT_BRANCH}"
           scripts/changelog.sh prepend "$VERSION" "$PREVIOUS" "v${VERSION}"
 
-          if git diff --quiet -- CHANGELOG.md; then
+          # Staged first: plain git diff ignores an untracked file, so a
+          # CHANGELOG.md the script had just created looked unchanged.
+          git add CHANGELOG.md
+          if git diff --cached --quiet -- CHANGELOG.md; then
             echo "CHANGELOG.md already up to date."
             exit 0
           fi
-          git add CHANGELOG.md
           git commit -m "docs: changelog for v${VERSION}"
 
           # From here every failure warns instead of failing: the release is
