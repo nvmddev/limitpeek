@@ -6,7 +6,6 @@ import AppKit
 @MainActor
 final class Refresher {
     private let store: AccountStore
-    private var schedule = PollSchedule()
     private var pollTask: Task<Void, Never>?
     private var observers: [any NSObjectProtocol] = []
 
@@ -48,9 +47,10 @@ final class Refresher {
 
     private func poll() async {
         while !Task.isCancelled, store.sessionState == .signedIn {
-            let due = schedule.nextPoll(after: store.lastRefreshAt,
-                                        rateLimitedUntil: store.rateLimitedUntil,
-                                        isLowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled)
+            let due = PollSchedule.nextPoll(after: store.lastRefreshAt,
+                                            rateLimitedAt: store.rateLimitedAt,
+                                            rateLimitedUntil: store.rateLimitedUntil,
+                                            isLowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled)
             let wait = due.timeIntervalSinceNow
             if wait > 0 {
                 do {
@@ -59,7 +59,7 @@ final class Refresher {
                     return
                 }
             } else {
-                schedule.record(await store.refresh())
+                await store.refresh()
             }
         }
     }
@@ -67,28 +67,21 @@ final class Refresher {
 
 /// How long to wait between polls. Separated so the backoff can be tested
 /// without timers or network.
-struct PollSchedule: Sendable {
-    static let normalInterval: TimeInterval = 60
-    /// Low Power Mode, and after a 429 until a poll lands again.
+enum PollSchedule {
+    static let normalInterval: TimeInterval = 120
+    /// Low Power Mode, and for `recoveryPeriod` after a 429.
     static let slowInterval: TimeInterval = 300
+    static let recoveryPeriod: TimeInterval = 1200
 
-    private(set) var isBackingOff = false
-
-    mutating func record(_ outcome: AccountStore.RefreshOutcome) {
-        switch outcome {
-        case .updated: isBackingOff = false
-        case .rateLimited: isBackingOff = true
-        case .failed, .skipped, .signedOut, .requiresReauthentication: break
-        }
-    }
-
-    func interval(isLowPowerMode: Bool) -> TimeInterval {
-        isBackingOff || isLowPowerMode ? Self.slowInterval : Self.normalInterval
+    static func interval(after lastRequest: Date, rateLimitedAt: Date?, isLowPowerMode: Bool) -> TimeInterval {
+        let isRecovering = rateLimitedAt.map { lastRequest.timeIntervalSince($0) < recoveryPeriod } ?? false
+        return isRecovering || isLowPowerMode ? slowInterval : normalInterval
     }
 
     /// Never before a rate-limit deadline; at once when nothing was requested yet.
-    func nextPoll(after lastRequest: Date, rateLimitedUntil: Date?, isLowPowerMode: Bool) -> Date {
-        max(lastRequest.addingTimeInterval(interval(isLowPowerMode: isLowPowerMode)),
-            rateLimitedUntil ?? .distantPast)
+    static func nextPoll(after lastRequest: Date, rateLimitedAt: Date?, rateLimitedUntil: Date?,
+                         isLowPowerMode: Bool) -> Date {
+        let interval = interval(after: lastRequest, rateLimitedAt: rateLimitedAt, isLowPowerMode: isLowPowerMode)
+        return max(lastRequest.addingTimeInterval(interval), rateLimitedUntil ?? .distantPast)
     }
 }

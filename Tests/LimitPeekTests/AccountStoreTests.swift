@@ -67,24 +67,13 @@ struct AccountStoreTests {
         // Retry-After is shorter than the floor, so the floor wins.
         let deadline = try #require(store.rateLimitedUntil)
         #expect(deadline.timeIntervalSinceNow > AccountStore.rateLimitFallback - 10)
-        #expect(store.lastError != nil)
+        // The reading from the sign-in is fresh, so the countdown alone reports the 429.
+        #expect(store.lastError == nil)
+        #expect(store.display != nil)
         #expect(!store.canRefresh(at: deadline.addingTimeInterval(-1)))
         #expect(store.canRefresh(at: deadline))
 
         #expect(await store.refresh(force: true) == .skipped)
-    }
-
-    @Test func refreshIfStaleLeavesAFreshReadingAlone() async throws {
-        let (name, defaults) = try makeDefaults()
-        defer { tearDown(name, defaults) }
-        let usageRequests = LockedCounter()
-        let store = makeStore(defaults: defaults, tokens: InMemoryTokenStore(), usageRequests: usageRequests)
-        try await signIn(store)
-        #expect(usageRequests.current == 1)
-
-        await store.refreshIfStale()
-
-        #expect(usageRequests.current == 1)
     }
 
     @Test func manualRefreshWaitsOutTheThrottle() async throws {

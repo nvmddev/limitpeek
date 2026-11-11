@@ -77,7 +77,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         isMenuOpen = true
         store.retryPendingTokenCleanup()
-        Task { await store.refreshIfStale() }
         scheduleCaptionUpdate()
     }
 
@@ -282,7 +281,7 @@ enum RefreshCaption {
             return "Rate limited · retrying in \(left)"
         }
         guard let fetchedAt else { return nil }
-        if now.timeIntervalSince(fetchedAt) < AccountStore.staleAfter { return "Updated just now" }
+        if now.timeIntervalSince(fetchedAt) < 60 { return "Updated just now" }
         return "Updated \(fetchedAt.formatted(.relative(presentation: .numeric, unitsStyle: .abbreviated)))"
     }
 

@@ -12,6 +12,8 @@ final class AccountStore {
     private(set) var lastError: String?
     /// Set by a 429; every refresh path waits for it.
     private(set) var rateLimitedUntil: Date?
+    /// The most recent 429, kept after the deadline passes so polling can stay slow.
+    private(set) var rateLimitedAt: Date?
     /// A token the server rejected. Only a fresh sign-in or sign-out clears it;
     /// while it is set, a refresh never reaches the success path.
     private(set) var authIssue: AuthIssue?
@@ -51,8 +53,9 @@ final class AccountStore {
     nonisolated static let minRefreshInterval: TimeInterval = 20
     /// Floor for the shared 429 deadline; Retry-After wins only when longer.
     nonisolated static let rateLimitFallback: TimeInterval = 300
-    /// Opening the menu fetches a reading older than this.
-    nonisolated static let staleAfter: TimeInterval = 60
+    /// A 429 is reported as an error only once the reading is older than this;
+    /// until then the Refresh item's countdown is enough.
+    nonisolated static let outdatedAfter: TimeInterval = 600
 
     /// The challenge for the sign-in waiting on a pasted code.
     private var pendingPKCE: PKCE?
@@ -235,18 +238,14 @@ final class AccountStore {
         }
     }
 
-    /// Fetches only when the reading on screen is older than `staleAfter`.
-    func refreshIfStale() async {
-        if let fetchedAt = display?.fetchedAt,
-           Date.now.timeIntervalSince(fetchedAt) <= Self.staleAfter { return }
-        await refresh()
-    }
-
     private func recordFailure(_ error: any Error) -> RefreshOutcome {
         switch error {
         case APIError.rateLimited(let retryAfter):
-            rateLimitedUntil = .now.addingTimeInterval(max(retryAfter ?? 0, Self.rateLimitFallback))
-            lastError = error.localizedDescription
+            let now = Date.now
+            rateLimitedAt = now
+            rateLimitedUntil = now.addingTimeInterval(max(retryAfter ?? 0, Self.rateLimitFallback))
+            let isOutdated = display.map { now.timeIntervalSince($0.fetchedAt) > Self.outdatedAfter } ?? true
+            lastError = isOutdated ? error.localizedDescription : nil
             return .rateLimited
         case APIError.unauthorized:
             // The rotation retry has already run; the token is really rejected.
@@ -335,6 +334,7 @@ final class AccountStore {
         cachedToken = token
         isRefreshing = false
         rateLimitedUntil = nil
+        rateLimitedAt = nil
         authIssue = nil
         lastRefreshAt = .distantPast
         saveAccount()
@@ -351,6 +351,7 @@ final class AccountStore {
         display = nil
         isRefreshing = false
         rateLimitedUntil = nil
+        rateLimitedAt = nil
         authIssue = nil
         pendingPKCE = nil
         lastRefreshAt = .distantPast
