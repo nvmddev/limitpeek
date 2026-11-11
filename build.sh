@@ -22,7 +22,11 @@ fi
 
 APP_NAME="LimitPeek"
 BUNDLE_ID="${BUNDLE_ID:-dev.nevermind.LimitPeek}"
-VERSION="${VERSION:-0.1.0}"
+if [[ -z "${VERSION:-}" ]]; then
+	VERSION="$(scripts/version.sh latest)"
+	VERSION="${VERSION#v}"
+	VERSION="${VERSION:-0.1.0}"
+fi
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 
 # Ad-hoc signatures change on every build, which invalidates the Keychain ACL

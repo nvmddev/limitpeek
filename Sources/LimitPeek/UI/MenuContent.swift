@@ -1,10 +1,11 @@
 import SwiftUI
 
 /// The app glyph beside a bold title and a secondary line, at the top of the
-/// menu and the sign-in window.
+/// menu and the sign-in window, with the app version in the menu's corner.
 struct MenuHeader: View {
     let title: String
     var subtitle: String?
+    var version: String?
 
     var body: some View {
         HStack(spacing: 10) {
@@ -13,15 +14,26 @@ struct MenuHeader: View {
                 .frame(width: 26, height: 26 / AppGlyph.aspectRatio)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.headline)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(title)
+                        .font(.headline)
+                    if let version {
+                        Spacer(minLength: 0)
+                        Text("v\(version)")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(.tertiary)
+                            .fixedSize()
+                            .accessibilityLabel("Version \(version)")
+                    }
+                }
                 if let subtitle {
                     Text(subtitle)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)

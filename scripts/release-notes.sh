@@ -21,6 +21,20 @@ brew install --cask nvmddev/tap/limitpeek
 
 Or download \`LimitPeek-${VERSION}.dmg\` below and drag **LimitPeek.app** into
 \`/Applications\`. Apple silicon (arm64), macOS 14 or newer.
+
+## Update
+
+With Homebrew:
+
+\`\`\`sh
+brew upgrade --cask limitpeek
+\`\`\`
+
+Homebrew quits LimitPeek during the upgrade. Open it again afterwards.
+
+Without Homebrew, choose **Quit LimitPeek** in its menu. Then download
+\`LimitPeek-${VERSION}.dmg\` below, drag **LimitPeek.app** into \`/Applications\`,
+replace the old version and open it again.
 MD
 
 if [[ "$NOTARIZED" != "true" ]]; then

@@ -64,11 +64,13 @@ LimitPeek reads your usage from the same API that Claude Code uses. It checks ev
 
 If the server sends a rate limit error, LimitPeek waits at least 5 minutes before it tries again, and then checks only every 5 minutes for the next 20 minutes.
 
+The installed version is in the top right corner of the menu. At launch and once a day, LimitPeek asks GitHub for the latest release. If a newer one exists, the menu shows **Version … Available…**, which opens the release page.
+
 ## Privacy
 
 - LimitPeek asks only for the `user:profile` scope. With it, LimitPeek can read your profile and usage. It cannot send messages to Claude.
 - The token stays in your macOS Keychain. LimitPeek does not write it to a file or a log.
-- LimitPeek connects only to `api.anthropic.com` and `platform.claude.com`.
+- LimitPeek connects only to `api.anthropic.com`, `platform.claude.com` and `api.github.com`. The GitHub request asks for the latest release and carries no token or account data.
 - The app runs in the macOS App Sandbox. It collects no analytics.
 
 Sign out before you uninstall LimitPeek. This deletes the token from the Keychain.
