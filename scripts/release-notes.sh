@@ -42,8 +42,3 @@ if [[ "$NOTARIZED" != "true" ]]; then
 > `xattr -dr com.apple.quarantine /Applications/LimitPeek.app`.
 MD
 fi
-
-cat <<'MD'
-
-<sub>LimitPeek is an unofficial project and is not affiliated with Anthropic.</sub>
-MD
