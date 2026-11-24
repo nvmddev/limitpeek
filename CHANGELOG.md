@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 — 2026-11-24
+
+### Fixed
+
+- stop losing the sign-in and keep the sign-in window in front (#6)
+
 ## 0.3.0 — 2026-11-11
 
 ### Added
