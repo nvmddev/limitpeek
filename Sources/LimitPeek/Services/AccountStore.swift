@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 
 /// Owns the account, its token and the current reading.
 @MainActor
@@ -76,6 +77,8 @@ final class AccountStore {
         static let selectedAccountID = "selectedAccountID"
         static let pendingTokenCleanup = "pendingTokenCleanup"
     }
+
+    private static let log = Logger(subsystem: "dev.nevermind.LimitPeek", category: "auth")
 
     private static let tokenCleanupNoticeText =
         "Signed out, but the saved Keychain token could not be removed. LimitPeek will retry."
@@ -302,9 +305,15 @@ final class AccountStore {
         return cachedToken
     }
 
+    /// The server spends the old refresh token once it answers, so a cancelled
+    /// poll must not discard the new one.
+    private func rotate(_ pair: TokenPair, for account: Account, generation: Int) async throws -> TokenPair {
+        try await Task { try await self.performRotation(pair, for: account, generation: generation) }.value
+    }
+
     /// Writes the new pair before dropping the old one, so a crash mid-rotation
     /// leaves a usable token.
-    private func rotate(_ pair: TokenPair, for account: Account, generation: Int) async throws -> TokenPair {
+    private func performRotation(_ pair: TokenPair, for account: Account, generation: Int) async throws -> TokenPair {
         do {
             let refreshed = try await oauth.refresh(pair)
             guard isCurrent(generation), cachedToken?.refreshToken == pair.refreshToken else {
@@ -314,9 +323,18 @@ final class AccountStore {
             cachedToken = refreshed
             return refreshed
         } catch OAuthError.invalidGrant {
-            if isCurrent(generation), cachedToken?.refreshToken == pair.refreshToken {
-                removeAccount(account, error: OAuthError.invalidGrant.localizedDescription)
+            guard isCurrent(generation), cachedToken?.refreshToken == pair.refreshToken else {
+                throw OAuthError.invalidGrant
             }
+            // A local build shares the Keychain item and may have rotated it first.
+            if let stored = try? tokenStore.load(for: account.id), stored.refreshToken != pair.refreshToken {
+                Self.log.notice("Refresh token rejected; adopting the newer one from the Keychain")
+                cachedToken = stored
+                guard stored.needsRefresh() else { return stored }
+                return try await performRotation(stored, for: account, generation: generation)
+            }
+            Self.log.error("Refresh token rejected; signing out")
+            removeAccount(account, error: OAuthError.invalidGrant.localizedDescription)
             throw OAuthError.invalidGrant
         }
     }

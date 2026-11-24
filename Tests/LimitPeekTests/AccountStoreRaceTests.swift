@@ -399,6 +399,84 @@ struct AccountStoreRaceTests {
         #expect(tokens.pair(for: raceAccountID) != nil)
     }
 
+    @Test func aCancelledRefreshStillKeepsTheRotatedToken() async throws {
+        let (name, defaults) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        let tokens = RaceTokenStore()
+        try seedSignedIn(defaults: defaults, tokens: tokens, expiresIn: 60)
+        let gate = AsyncGate()
+        defer { gate.release() }
+        let tokenCalls = LockedCounter()
+
+        RaceURLProtocol.handler = { request in
+            switch request.url?.path {
+            case "/v1/oauth/token":
+                tokenCalls.increment()
+                return try raceResponse(for: request,
+                                        body: raceTokenBody(access: "access-new", refresh: "refresh-new"))
+            case "/api/oauth/usage":
+                return try raceResponse(for: request, body: raceUsageBody(percent: 42))
+            default:
+                throw URLError(.unsupportedURL)
+            }
+        }
+        RaceURLProtocol.gateProvider = { request in
+            request.url?.path == "/v1/oauth/token" ? gate : nil
+        }
+        defer {
+            RaceURLProtocol.handler = nil
+            RaceURLProtocol.gateProvider = nil
+        }
+
+        let store = makeStore(defaults: defaults, tokens: tokens)
+        let poll = Task { await store.refresh(force: true) }
+        try await withTimeout(seconds: 10) { await gate.waitForArrival() }
+        poll.cancel()
+        gate.release()
+        _ = try await withTimeout(seconds: 10) { await poll.value }
+
+        #expect(store.isSignedIn)
+        #expect(tokens.pair(for: raceAccountID)?.refreshToken == "refresh-new")
+        #expect(await store.refresh(force: true) == .updated)
+        #expect(tokenCalls.current == 1)
+    }
+
+    @Test func invalidGrantAdoptsATokenAnotherCopySaved() async throws {
+        let (name, defaults) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        let tokens = RaceTokenStore()
+        try seedSignedIn(defaults: defaults, tokens: tokens, expiresIn: 60)
+        let usageAuthorization = OSAllocatedUnfairLock<String?>(initialState: nil)
+
+        RaceURLProtocol.handler = { request in
+            switch request.url?.path {
+            case "/v1/oauth/token":
+                try tokens.save(TokenPair(accessToken: "access-other",
+                                          refreshToken: "refresh-other",
+                                          expiresAt: Date().addingTimeInterval(3600),
+                                          scopes: ["user:profile"]),
+                                for: raceAccountID)
+                return try raceResponse(for: request, status: 400, body: #"{"error":"invalid_grant"}"#)
+            case "/api/oauth/usage":
+                usageAuthorization.withLock { $0 = request.value(forHTTPHeaderField: "Authorization") }
+                return try raceResponse(for: request, body: raceUsageBody(percent: 42))
+            default:
+                throw URLError(.unsupportedURL)
+            }
+        }
+        defer { RaceURLProtocol.handler = nil }
+
+        let store = makeStore(defaults: defaults, tokens: tokens)
+        #expect(await store.refresh(force: true) == .updated)
+
+        #expect(store.isSignedIn)
+        #expect(store.lastError == nil)
+        #expect(usageAuthorization.withLock { $0 } == "Bearer access-other")
+        #expect(tokens.pair(for: raceAccountID)?.refreshToken == "refresh-other")
+    }
+
     @Test func forbiddenUsageAsksForReauthenticationWithoutDeletingTheAccount() async throws {
         let (name, defaults) = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: name) }

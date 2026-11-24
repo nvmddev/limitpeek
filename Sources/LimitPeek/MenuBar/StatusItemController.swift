@@ -271,7 +271,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc private func signIn() {
-        signInWindow.begin()
+        signInWindow.begin(below: statusItem?.button?.window?.frame)
     }
 
     @objc private func signOut() {
